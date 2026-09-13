@@ -1,0 +1,297 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+/* ---------------------------------------------------------------
+   Luiza Run Surfs — tokens do jogo (ver design.md)
+--------------------------------------------------------------- */
+:root {
+  --lrs-bg: #1a1030;
+  --lrs-surface: #241041;
+  --lrs-surface-2: #33165a;
+  --lrs-pink: #ff2e7e;
+  --lrs-cyan: #29d9ff;
+  --lrs-gold: #ffc93c;
+  --lrs-lime: #3ce87a;
+  --lrs-muted: #b8afc9;
+  --lrs-locked: #4a4358;
+  --lrs-ink: #10061f;
+  --lrs-paper: #fff6fb;
+  --font-display: "Baloo 2", system-ui, sans-serif;
+  --font-body: "Poppins", system-ui, sans-serif;
+}
+
+@theme inline {
+  --color-lrs-bg: var(--lrs-bg);
+  --color-lrs-surface: var(--lrs-surface);
+  --color-lrs-surface2: var(--lrs-surface-2);
+  --color-lrs-pink: var(--lrs-pink);
+  --color-lrs-cyan: var(--lrs-cyan);
+  --color-lrs-gold: var(--lrs-gold);
+  --color-lrs-lime: var(--lrs-lime);
+  --color-lrs-muted: var(--lrs-muted);
+  --color-lrs-locked: var(--lrs-locked);
+  --color-lrs-ink: var(--lrs-ink);
+  --color-lrs-paper: var(--lrs-paper);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    overscroll-behavior: none;
+  }
+}
+
+@layer utilities {
+  .lrs-display {
+    font-family: var(--font-display);
+    letter-spacing: 0.01em;
+  }
+  .lrs-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  .lrs-stroke {
+    -webkit-text-stroke: 3px var(--lrs-ink);
+    paint-order: stroke fill;
+  }
+  .lrs-panel {
+    background: linear-gradient(160deg, var(--lrs-surface-2), var(--lrs-surface));
+    border: 3px solid var(--lrs-ink);
+    box-shadow:
+      0 18px 0 -6px rgba(16, 6, 31, 0.55),
+      0 0 0 2px rgba(255, 255, 255, 0.06) inset;
+  }
+  .lrs-btn {
+    font-family: var(--font-display);
+    font-weight: 800;
+    border: 3px solid var(--lrs-ink);
+    box-shadow: 0 6px 0 0 var(--lrs-ink);
+    transition:
+      transform 0.08s ease,
+      box-shadow 0.08s ease,
+      filter 0.15s ease;
+  }
+  .lrs-btn:active {
+    transform: translateY(5px);
+    box-shadow: 0 1px 0 0 var(--lrs-ink);
+  }
+  .lrs-btn:hover {
+    filter: brightness(1.07);
+  }
+  .lrs-rise {
+    animation: lrs-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .lrs-pop {
+    animation: lrs-pop 0.35s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  }
+  /* aviso que desce do topo da tela */
+  .lrs-drop {
+    animation: lrs-drop 0.3s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  }
+  /* combo pulsando */
+  .lrs-pulse {
+    animation: lrs-pulse 0.6s ease-in-out infinite;
+  }
+  /* coração perdido: treme e murcha antes de virar vazio */
+  .lrs-heart-break {
+    animation: lrs-heart-break 0.65s ease-out both;
+  }
+  /* moedas entrando no cofrinho na tela de Game Over */
+  .lrs-coin-fly {
+    animation: lrs-coin-fly 0.7s ease-in both;
+  }
+}
+
+@keyframes lrs-rise {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lrs-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes lrs-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-24px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lrs-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes lrs-heart-break {
+  0% {
+    transform: scale(1.15) rotate(-6deg);
+  }
+  30% {
+    transform: scale(1.05) rotate(7deg);
+  }
+  60% {
+    transform: scale(0.95) rotate(-4deg);
+  }
+  100% {
+    transform: scale(0.85) rotate(0deg);
+    opacity: 0.75;
+  }
+}
+
+@keyframes lrs-coin-fly {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.6);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(0, -6px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--lrs-fly-x, 0), var(--lrs-fly-y, 60px)) scale(0.5);
+  }
+}
