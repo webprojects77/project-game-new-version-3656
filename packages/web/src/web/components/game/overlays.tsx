@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import type { GameOverPayload } from "../../game/engine3d";
+import { useEffect, useRef, useState } from "react";
+import type { AdminFlags, DebugInfo, GameOverPayload, ObstacleType } from "../../game/engine3d";
+import type { PowerKind } from "../../game/powerups";
 import { estaConcluida, type Mission, type MissionProgress } from "../../game/missions";
 import {
   isUnlocked,
@@ -15,9 +16,63 @@ export interface GameSettings {
   sfxVolume: number;
   muted: boolean;
   onScreenButtons: boolean;
-  swipeSensitivity: number;
   vibration: boolean;
   reduceFx: boolean;
+  /** tamanho dos botões na tela (1 = padrão) */
+  btnScale: number;
+  /** altura dos botões: 0 = rente ao rodapé, 1 = no meio da tela */
+  btnBottom: number;
+  /** largura que a fileira de botões ocupa: 1 = tela toda, 0.4 = bem juntinhos */
+  btnSpread: number;
+}
+
+/** Estilo da fileira de botões na tela, a partir das configurações do jogador. */
+export function estiloBotoes(s: GameSettings) {
+  const margem = (1 - s.btnSpread) * 50; // % de cada lado
+  return {
+    caixa: {
+      left: `${margem}%`,
+      right: `${margem}%`,
+      bottom: `calc(1rem + ${s.btnBottom * 38}vh)`,
+    } as React.CSSProperties,
+    botao: {
+      fontSize: `${1.25 * s.btnScale}rem`,
+      paddingTop: `${0.75 * s.btnScale}rem`,
+      paddingBottom: `${0.75 * s.btnScale}rem`,
+    } as React.CSSProperties,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Regras da conta (nome e senha)
+// ---------------------------------------------------------------------------
+
+/** quanto custa, em moedas, trocar o apelido depois de criar a conta */
+export const NOME_CUSTO = 20_000;
+export const NOME_MIN = 4;
+export const NOME_MAX = 8;
+/** só pode trocar o nome uma vez por mês */
+export const NOME_ESPERA_MS = 30 * 24 * 60 * 60 * 1000;
+export const SENHA_MIN = 4;
+
+/**
+ * Confere as regras do apelido: sem espaços, só letras e números,
+ * de 4 a 8 caracteres. Devolve o erro em texto ou null quando está tudo certo.
+ */
+export function validarNome(nome: string, minimo = NOME_MIN): string | null {
+  if (!nome) return "Escreva um apelido.";
+  if (/\s/.test(nome)) return "O apelido não pode ter espaços.";
+  if (!/^[0-9A-Za-zÀ-ÖØ-öø-ÿ]+$/.test(nome)) return "Use só letras e números.";
+  if (nome.length < minimo) return `Precisa de pelo menos ${minimo} caracteres.`;
+  if (nome.length > NOME_MAX) return `No máximo ${NOME_MAX} caracteres.`;
+  return null;
+}
+
+/** Quantos dias ainda faltam para poder trocar o apelido de novo. */
+export function diasParaTrocarNome(ultimaTroca: number | null): number {
+  if (!ultimaTroca) return 0;
+  const falta = ultimaTroca + NOME_ESPERA_MS - Date.now();
+  return falta <= 0 ? 0 : Math.ceil(falta / (24 * 60 * 60 * 1000));
 }
 
 export function Frame({ children }: { children: React.ReactNode }) {
@@ -28,45 +83,117 @@ export function Frame({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Tela de apelido: aparece antes do menu, na primeira vez. */
+/**
+ * Criação da conta: apelido + senha. Aparece antes do menu, na primeira vez.
+ *
+ * Detalhe escondido: clicar 5 vezes seguidas no botão "Confirmar" abre o campo
+ * "Chave de acesso". Com ele aberto o mínimo de caracteres do apelido cai para
+ * 3, que é o caminho da conta admin ("adm").
+ */
 export function NameGate({
   initial,
   onConfirm,
   onCancel,
 }: {
   initial: string;
-  onConfirm: (name: string) => void;
+  onConfirm: (nome: string, senha: string, chave: string) => string | null;
   onCancel?: () => void;
 }) {
-  const [value, setValue] = useState(initial);
-  const clean = value.trim();
+  const [nome, setNome] = useState(initial);
+  const [senha, setSenha] = useState("");
+  const [chave, setChave] = useState("");
+  const [modoChave, setModoChave] = useState(false);
+  const [cliques, setCliques] = useState(0);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const limpo = nome.trim();
+  const minimo = modoChave ? 3 : NOME_MIN;
+
+  function confirmar() {
+    // contador do atalho escondido: 5 cliques no Confirmar abrem a chave
+    const n = cliques + 1;
+    setCliques(n);
+    if (n >= 5 && !modoChave) {
+      setModoChave(true);
+      setErro("Campo de chave de acesso liberado.");
+      return;
+    }
+    const problema = validarNome(limpo, minimo);
+    if (problema) {
+      setErro(problema);
+      return;
+    }
+    if (senha.length < SENHA_MIN) {
+      setErro(`A senha precisa de pelo menos ${SENHA_MIN} caracteres.`);
+      return;
+    }
+    setErro(onConfirm(limpo, senha, chave.trim()));
+  }
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (clean) onConfirm(clean);
+        confirmar();
       }}
       className="lrs-panel lrs-pop w-full max-w-sm rounded-3xl p-6 text-center"
     >
-      <h2 className="lrs-display text-3xl font-extrabold text-[var(--lrs-cyan)]">Qual é o seu apelido?</h2>
+      <h2 className="lrs-display text-3xl font-extrabold text-[var(--lrs-cyan)]">Criar sua conta</h2>
       <p className="mt-2 text-sm text-white/65">
-        Ele fica salvo neste aparelho e vai direto para o ranking. Cada apelido guarda só o melhor recorde.
+        O apelido vai para o ranking e a senha protege o seu progresso neste aparelho.
       </p>
+
       <input
         autoFocus
-        value={value}
-        maxLength={16}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Ex.: Luiza"
+        value={nome}
+        maxLength={NOME_MAX}
+        onChange={(e) => {
+          setNome(e.target.value);
+          setErro(null);
+        }}
+        placeholder="Apelido"
         className="lrs-display mt-5 w-full rounded-2xl border-2 border-[var(--lrs-ink)] bg-black/30 px-4 py-3 text-center text-2xl text-white outline-none placeholder:text-white/30"
       />
+      <p className="mt-1 text-[11px] text-white/45">
+        Sem espaços, só letras e números, de {NOME_MIN} a {NOME_MAX} caracteres.
+      </p>
+
+      <input
+        type="password"
+        value={senha}
+        maxLength={16}
+        onChange={(e) => {
+          setSenha(e.target.value);
+          setErro(null);
+        }}
+        placeholder="Senha"
+        className="lrs-display mt-3 w-full rounded-2xl border-2 border-[var(--lrs-ink)] bg-black/30 px-4 py-3 text-center text-xl text-white outline-none placeholder:text-white/30"
+      />
+      <p className="mt-1 text-[11px] text-white/45">
+        Guarde bem: ela é pedida para restaurar o progresso.
+      </p>
+
+      {modoChave && (
+        <input
+          type="password"
+          value={chave}
+          maxLength={16}
+          onChange={(e) => {
+            setChave(e.target.value);
+            setErro(null);
+          }}
+          placeholder="Chave de acesso"
+          className="lrs-display mt-3 w-full rounded-2xl border-2 border-[var(--lrs-lime)] bg-black/30 px-4 py-3 text-center text-xl text-[var(--lrs-lime)] outline-none placeholder:text-[var(--lrs-lime)]/40"
+        />
+      )}
+
       <button
         type="submit"
-        disabled={!clean}
-        className="lrs-btn mt-4 w-full rounded-2xl bg-[var(--lrs-pink)] py-3 text-xl text-white disabled:opacity-40"
+        className="lrs-btn mt-4 w-full rounded-2xl bg-[var(--lrs-pink)] py-3 text-xl text-white"
       >
-        Continuar
+        Confirmar
       </button>
+      {erro && <p className="mt-2 text-[12px] text-[var(--lrs-gold)]">{erro}</p>}
       {onCancel && (
         <button type="button" onClick={onCancel} className="mt-3 text-xs text-white/50 underline">
           Cancelar
@@ -199,8 +326,8 @@ export function HowTo({ onClose }: { onClose: () => void }) {
   ];
   const items: [string, string][] = [
     ["🪙 Moeda", "+10 pontos e +1 moeda para as skins"],
-    ["💚 Coração verde", "recupera 1 vida (máx. 3)"],
-    ["⚡ Boost", "5s invencível, velocidade e pontos em dobro"],
+    ["💚 Coração verde", "recupera 1 vida (raro!)"],
+    ["⚡ Boost", "5s de velocidade e pontos em dobro (não protege de batida)"],
     ["📸 Item especial", "+100 pontos e libera a skin Polaroid"],
   ];
   return (
@@ -228,14 +355,7 @@ export function HowTo({ onClose }: { onClose: () => void }) {
         Colete sem parar para subir o combo até <strong className="text-[var(--lrs-gold)]">x8</strong>: ele
         multiplica pontos e moedas. Se você demorar demais entre duas coletas, o combo zera.
       </p>
-      <h3 className="lrs-display mt-5 text-xl font-bold text-[var(--lrs-lime)]">Fases</h3>
-      <p className="mt-2 text-sm text-white/70">
-        O cenário muda a cada 750 m: <strong className="text-white">Bairro</strong> (manhã) →{" "}
-        <strong className="text-white">Escola</strong> (meio-dia) → <strong className="text-white">Centro</strong>{" "}
-        (fim de tarde) → <strong className="text-white">Praça</strong> (noite). Um portal com faixa de pedestre
-        gigante avisa a troca.
-      </p>
-      <p className="mt-3 text-sm text-white/70">
+      <p className="mt-5 text-sm text-white/70">
         Você tem <strong className="text-[var(--lrs-pink)]">3 vidas</strong>. Cada batida deixa o policial mais
         perto — e o <strong className="text-[var(--lrs-gold)]">cachorro</strong> late correndo do lado dele. Sem
         vidas, ele te alcança: Game Over.
@@ -251,7 +371,16 @@ export function HowTo({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function Paused({ onResume, onMenu }: { onResume: () => void; onMenu: () => void }) {
+export function Paused({
+  onResume,
+  onMenu,
+  onAdmin,
+}: {
+  onResume: () => void;
+  onMenu: () => void;
+  /** só existe na conta admin: abre o painel sem sair da partida */
+  onAdmin?: () => void;
+}) {
   return (
     <div className="lrs-panel lrs-pop w-full max-w-sm rounded-3xl p-6 text-center">
       <h2 className="lrs-display text-4xl font-extrabold text-[var(--lrs-cyan)]">Pausado</h2>
@@ -263,6 +392,15 @@ export function Paused({ onResume, onMenu }: { onResume: () => void; onMenu: () 
         >
           Continuar
         </button>
+        {onAdmin && (
+          <button
+            type="button"
+            onClick={onAdmin}
+            className="lrs-btn rounded-2xl border border-[var(--lrs-lime)]/60 bg-[var(--lrs-surface2)] py-3 text-sm font-bold tracking-wide text-[var(--lrs-lime)]"
+          >
+            Painel admin
+          </button>
+        )}
         <button
           type="button"
           onClick={onMenu}
@@ -569,6 +707,7 @@ const TIER_LABEL: Record<SkinInfo["tier"], string> = {
   rara: "Rara",
   epica: "Épica",
   especial: "Especial",
+  admin: "Admin",
 };
 
 /** Miniatura low poly da skin em SVG — mesmas cores do boneco 3D. */
@@ -626,9 +765,6 @@ export function SkinPicker({
           <h2 className="lrs-display text-2xl font-extrabold text-[var(--lrs-lime)] sm:text-3xl">
             Personagens
           </h2>
-          <p className="text-xs text-white/60 sm:text-sm">
-            Todas jogam igual — muda só o visual, tudo em 3D.
-          </p>
         </div>
         <div className="lrs-nums lrs-display shrink-0 rounded-2xl border-2 border-[var(--lrs-ink)] bg-black/30 px-3 py-2 text-right">
           <div className="text-base font-bold text-[var(--lrs-gold)] sm:text-lg">
@@ -730,16 +866,6 @@ export function SkinPicker({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10px] text-white/50">
-        <span>
-          <span className="mr-1 inline-block h-2 w-2 rounded-full bg-[var(--lrs-cyan)]" />
-          borda ciano = liberada
-        </span>
-        <span>
-          <span className="mr-1 inline-block h-2 w-2 rounded-full bg-[var(--lrs-pink)]" />
-          borda rosa = em uso
-        </span>
-      </div>
     </div>
   );
 }
@@ -748,28 +874,73 @@ export function SkinPicker({
 // Configurações
 // ---------------------------------------------------------------------------
 
+/**
+ * Slider de 0 a 100%.
+ *
+ * Quando `disabled` fica ligado (caso do "Mudo"), o valor mostrado desliza
+ * animado até 0% e o controle trava; ao destravar, ele desliza de volta para o
+ * valor que estava guardado.
+ */
 function Slider({
   label,
   value,
   onChange,
+  disabled = false,
+  min = 0,
+  max = 100,
+  formato,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
+  disabled?: boolean;
+  min?: number;
+  max?: number;
+  formato?: (v: number) => string;
 }) {
+  const alvo = disabled ? 0 : Math.round(value * 100);
+  // valor que aparece na tela: persegue o alvo quadro a quadro (animação)
+  const [mostrado, setMostrado] = useState(alvo);
+  const mostradoRef = useRef(mostrado);
+  mostradoRef.current = mostrado;
+
+  useEffect(() => {
+    if (mostradoRef.current === alvo) return;
+    let raf = 0;
+    const passo = () => {
+      const atual = mostradoRef.current;
+      const delta = alvo - atual;
+      // chega perto o bastante: encaixa no alvo e para
+      if (Math.abs(delta) <= 1) {
+        setMostrado(alvo);
+        return;
+      }
+      const proximo = atual + delta * 0.22;
+      mostradoRef.current = proximo;
+      setMostrado(proximo);
+      raf = requestAnimationFrame(passo);
+    };
+    raf = requestAnimationFrame(passo);
+    return () => cancelAnimationFrame(raf);
+  }, [alvo]);
+
+  const inteiro = Math.round(mostrado);
   return (
-    <label className="block">
+    <label className={`block ${disabled ? "opacity-50" : ""}`}>
       <div className="flex justify-between text-sm text-white/80">
         <span>{label}</span>
-        <span className="lrs-nums text-white/50">{Math.round(value * 100)}%</span>
+        <span className="lrs-nums text-white/50">
+          {formato ? formato(inteiro) : `${inteiro}%`}
+        </span>
       </div>
       <input
         type="range"
-        min={0}
-        max={100}
-        value={Math.round(value * 100)}
+        min={min}
+        max={max}
+        value={inteiro}
+        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value) / 100)}
-        className="mt-1 h-2 w-full appearance-none rounded-full bg-black/40 accent-[var(--lrs-pink)]"
+        className="mt-1 h-2 w-full appearance-none rounded-full bg-black/40 accent-[var(--lrs-pink)] disabled:cursor-not-allowed"
       />
     </label>
   );
@@ -814,23 +985,42 @@ export const GAME_VERSION = "1.0";
 export function Settings({
   settings,
   playerName,
+  coins,
+  admin,
+  ultimaTrocaNome,
   onSaveName,
   onChange,
   onReset,
+  onOpenButtons,
+  onOpenAdmin,
   onClose,
 }: {
   settings: GameSettings;
   playerName: string;
-  onSaveName: (name: string) => void;
+  coins: number;
+  admin: boolean;
+  /** quando o apelido foi trocado pela última vez (null = nunca) */
+  ultimaTrocaNome: number | null;
+  /** devolve null quando deu certo, ou a mensagem de erro */
+  onSaveName: (nome: string) => string | null;
   onChange: (next: Partial<GameSettings>) => void;
-  onReset: () => void;
+  /** devolve null quando apagou, ou a mensagem de erro (senha errada) */
+  onReset: (senha: string) => string | null;
+  onOpenButtons: () => void;
+  onOpenAdmin?: () => void;
   onClose: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [senhaReset, setSenhaReset] = useState("");
+  const [erroReset, setErroReset] = useState<string | null>(null);
   const [nome, setNome] = useState(playerName);
-  const [salvo, setSalvo] = useState(false);
+  const [recado, setRecado] = useState<{ ok: boolean; texto: string } | null>(null);
+
   const nomeLimpo = nome.trim();
   const mudou = nomeLimpo.length > 0 && nomeLimpo !== playerName;
+  const diasFalta = admin ? 0 : diasParaTrocarNome(ultimaTrocaNome);
+  const temMoeda = admin || coins >= NOME_CUSTO;
+
   return (
     <div className="lrs-panel lrs-rise max-h-full w-full max-w-md overflow-y-auto rounded-3xl p-6">
       <h2 className="lrs-display text-3xl font-extrabold text-[var(--lrs-cyan)]">Configurações</h2>
@@ -844,10 +1034,10 @@ export function Settings({
           <input
             id="lrs-apelido"
             value={nome}
-            maxLength={16}
+            maxLength={NOME_MAX}
             onChange={(e) => {
               setNome(e.target.value);
-              setSalvo(false);
+              setRecado(null);
             }}
             className="lrs-display min-w-0 flex-1 rounded-xl border-2 border-[var(--lrs-ink)] bg-black/30 px-3 py-2 text-lg text-white outline-none placeholder:text-white/30"
             placeholder="Ex.: Luiza"
@@ -856,21 +1046,56 @@ export function Settings({
             type="button"
             disabled={!mudou}
             onClick={() => {
-              onSaveName(nomeLimpo);
-              setSalvo(true);
+              const erro = onSaveName(nomeLimpo);
+              setRecado(
+                erro
+                  ? { ok: false, texto: erro }
+                  : { ok: true, texto: "Apelido trocado ✓" },
+              );
             }}
             className="lrs-btn shrink-0 rounded-xl bg-[var(--lrs-lime)] px-4 py-2 text-sm font-bold text-[var(--lrs-ink)] disabled:opacity-40"
           >
-            Salvar
+            Trocar
           </button>
         </div>
-        <p className="mt-1 text-[11px] text-white/45">
-          {salvo && !mudou ? (
-            <span className="text-[var(--lrs-lime)]">Apelido salvo ✓</span>
+        <p className="mt-1 text-[11px] leading-relaxed text-white/45">
+          {recado ? (
+            <span style={{ color: recado.ok ? "var(--lrs-lime)" : "var(--lrs-gold)" }}>
+              {recado.texto}
+            </span>
           ) : (
-            "Cada apelido guarda só o melhor recorde no ranking global."
+            <>
+              Sem espaços, só letras e números, de {NOME_MIN} a {NOME_MAX} caracteres.
+              <br />
+              Custa{" "}
+              <strong className={temMoeda ? "text-[var(--lrs-gold)]" : "text-[var(--lrs-pink)]"}>
+                {NOME_CUSTO.toLocaleString("pt-BR")} moedas
+              </strong>{" "}
+              e só pode 1 vez por mês.
+              {admin
+                ? " Conta admin: sem custo e sem espera."
+                : diasFalta > 0
+                  ? ` Faltam ${diasFalta} dia(s) para poder trocar de novo.`
+                  : ""}
+            </>
           )}
         </p>
+        {admin && (
+          <div className="mt-2 rounded-xl border-2 border-[var(--lrs-lime)] bg-black/30 px-3 py-2">
+            <div className="text-[11px] font-bold tracking-wider text-[var(--lrs-lime)] uppercase">
+              Conta admin ativa
+            </div>
+            {onOpenAdmin && (
+              <button
+                type="button"
+                onClick={onOpenAdmin}
+                className="lrs-btn mt-2 w-full rounded-xl bg-[var(--lrs-lime)] py-2 text-sm font-bold text-[var(--lrs-ink)]"
+              >
+                Abrir painel admin
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <h3 className="lrs-display mt-4 text-lg font-bold text-[var(--lrs-gold)]">Som</h3>
@@ -878,10 +1103,21 @@ export function Settings({
         <Slider
           label="Música"
           value={settings.musicVolume}
+          disabled={settings.muted}
           onChange={(v) => onChange({ musicVolume: v })}
         />
-        <Slider label="Efeitos" value={settings.sfxVolume} onChange={(v) => onChange({ sfxVolume: v })} />
-        <Toggle label="Mudo" on={settings.muted} onChange={(v) => onChange({ muted: v })} />
+        <Slider
+          label="Efeitos"
+          value={settings.sfxVolume}
+          disabled={settings.muted}
+          onChange={(v) => onChange({ sfxVolume: v })}
+        />
+        <Toggle
+          label="Mudo"
+          hint="Com o mudo ligado os volumes vão a 0% e ficam travados"
+          on={settings.muted}
+          onChange={(v) => onChange({ muted: v })}
+        />
       </div>
 
       <h3 className="lrs-display mt-5 text-lg font-bold text-[var(--lrs-gold)]">Controles</h3>
@@ -892,11 +1128,19 @@ export function Settings({
           on={settings.onScreenButtons}
           onChange={(v) => onChange({ onScreenButtons: v })}
         />
-        <Slider
-          label="Sensibilidade do swipe"
-          value={settings.swipeSensitivity}
-          onChange={(v) => onChange({ swipeSensitivity: v })}
-        />
+        <button
+          type="button"
+          onClick={onOpenButtons}
+          className="flex w-full items-center justify-between gap-3 rounded-xl border-2 border-[var(--lrs-ink)] bg-black/25 px-3 py-2 text-left"
+        >
+          <span>
+            <span className="block text-sm text-white">Organizar botões</span>
+            <span className="block text-[11px] text-white/45">
+              Mudar o tamanho e a posição das setas na tela
+            </span>
+          </span>
+          <span className="shrink-0 text-lg text-white/60">›</span>
+        </button>
         <Toggle
           label="Vibração"
           hint="Só em celulares compatíveis"
@@ -919,13 +1163,31 @@ export function Settings({
       {confirming ? (
         <div className="mt-2 rounded-xl border-2 border-[var(--lrs-pink)] bg-black/30 p-3">
           <p className="text-sm text-white/80">
-            Isso apaga moedas, recorde, itens especiais e skins liberadas. Tem certeza?
+            Isso apaga moedas, recorde, itens especiais e skins liberadas. Digite a senha da conta para
+            confirmar.
           </p>
+          <input
+            type="password"
+            value={senhaReset}
+            maxLength={16}
+            onChange={(e) => {
+              setSenhaReset(e.target.value);
+              setErroReset(null);
+            }}
+            placeholder="Senha da conta"
+            className="lrs-display mt-2 w-full rounded-xl border-2 border-[var(--lrs-ink)] bg-black/30 px-3 py-2 text-center text-lg text-white outline-none placeholder:text-white/30"
+          />
+          {erroReset && <p className="mt-1 text-[12px] text-[var(--lrs-gold)]">{erroReset}</p>}
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => {
-                onReset();
+                const erro = onReset(senhaReset);
+                if (erro) {
+                  setErroReset(erro);
+                  return;
+                }
+                setSenhaReset("");
                 setConfirming(false);
               }}
               className="lrs-btn rounded-xl bg-[var(--lrs-pink)] py-2 text-sm text-white"
@@ -934,7 +1196,11 @@ export function Settings({
             </button>
             <button
               type="button"
-              onClick={() => setConfirming(false)}
+              onClick={() => {
+                setConfirming(false);
+                setSenhaReset("");
+                setErroReset(null);
+              }}
               className="lrs-btn rounded-xl bg-[var(--lrs-surface2)] py-2 text-sm text-white"
             >
               Cancelar
@@ -962,6 +1228,304 @@ export function Settings({
       <p className="lrs-nums mt-4 text-center text-[10px] tracking-wider text-white/35 uppercase">
         Luiza Run Surfs · versão {GAME_VERSION}
       </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Organizar botões da tela
+// ---------------------------------------------------------------------------
+
+/**
+ * Editor da fileira de botões: os botões de verdade continuam aparecendo no
+ * rodapé enquanto os controles são mexidos, então dá para ver o resultado na
+ * hora.
+ */
+export function ButtonLayout({
+  settings,
+  onChange,
+  onClose,
+}: {
+  settings: GameSettings;
+  onChange: (next: Partial<GameSettings>) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="lrs-panel lrs-rise w-full max-w-md rounded-3xl p-6">
+      <h2 className="lrs-display text-2xl font-extrabold text-[var(--lrs-cyan)]">Organizar botões</h2>
+      <p className="mt-1 text-xs text-white/60">
+        As setas aí embaixo mudam junto — deixe do tamanho e no lugar que a sua mão alcança melhor.
+      </p>
+
+      <div className="mt-4 space-y-4">
+        <Slider
+          label="Tamanho"
+          value={settings.btnScale / 2}
+          min={30}
+          max={90}
+          formato={(v) => `${Math.round(v * 2)}%`}
+          onChange={(v) => onChange({ btnScale: Math.min(1.8, Math.max(0.6, v * 2)) })}
+        />
+        <Slider
+          label="Altura na tela"
+          value={settings.btnBottom}
+          formato={(v) => (v < 5 ? "rodapé" : `${v}% acima`)}
+          onChange={(v) => onChange({ btnBottom: v })}
+        />
+        <Slider
+          label="Largura da fileira"
+          value={settings.btnSpread}
+          min={40}
+          max={100}
+          onChange={(v) => onChange({ btnSpread: Math.max(0.4, v) })}
+        />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => onChange({ btnScale: 1, btnBottom: 0, btnSpread: 1 })}
+          className="lrs-btn rounded-xl bg-[var(--lrs-surface2)] py-2 text-sm text-white"
+        >
+          Voltar ao padrão
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="lrs-btn rounded-xl bg-[var(--lrs-pink)] py-2 text-sm text-white"
+        >
+          Pronto
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Conta admin
+// ---------------------------------------------------------------------------
+
+/** Botãozinho quadrado usado no painel admin. */
+function AdminBtn({
+  children,
+  on,
+  onClick,
+}: {
+  children: React.ReactNode;
+  on?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="lrs-btn rounded-xl border-2 border-[var(--lrs-ink)] px-2 py-2 text-[11px] leading-tight font-bold"
+      style={{
+        background: on ? "var(--lrs-lime)" : "rgba(0,0,0,0.3)",
+        color: on ? "var(--lrs-ink)" : "#fff",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AdminTitulo({ texto }: { texto: string }) {
+  return (
+    <h3 className="lrs-display mt-4 text-sm font-bold tracking-wider text-[var(--lrs-lime)] uppercase">
+      {texto}
+    </h3>
+  );
+}
+
+/**
+ * Painel de poderes da conta admin. Só a conta "adm" chega aqui, e ele fala
+ * direto com os métodos admin do motor 3D.
+ */
+export function AdminPanel({
+  flags,
+  debug,
+  areas,
+  jogando,
+  onFlags,
+  onMoedas,
+  onSpawnObstaculo,
+  onSpawnPower,
+  onLimparPista,
+  onIrParaBioma,
+  onTeleporte,
+  onMover,
+  onDesbloquearTudo,
+  onResetProgresso,
+  onClose,
+}: {
+  flags: AdminFlags;
+  debug: DebugInfo | null;
+  areas: string[];
+  jogando: boolean;
+  onFlags: (next: Partial<AdminFlags>) => void;
+  onMoedas: (quanto: number) => void;
+  onSpawnObstaculo: (tipo: ObstacleType) => void;
+  onSpawnPower: (kind?: PowerKind) => void;
+  onLimparPista: () => void;
+  onIrParaBioma: (idx: number) => void;
+  onTeleporte: (lane: number) => void;
+  onMover: (eixo: "x" | "y" | "z", passo: number) => void;
+  onDesbloquearTudo: () => void;
+  onResetProgresso: () => void;
+  onClose: () => void;
+}) {
+  const obstaculos: [ObstacleType, string][] = [
+    ["low", "Baixo"],
+    ["high", "Alto"],
+    ["block", "Bloco"],
+    ["ride", "Rampa"],
+  ];
+  const poderes: PowerKind[] = ["iman", "escudo", "x2", "pulo", "turbo", "fuga", "fantasma", "chance"];
+
+  return (
+    <div className="lrs-panel lrs-rise max-h-full w-full max-w-lg overflow-y-auto rounded-3xl border-[3px] border-[var(--lrs-lime)] p-5">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="lrs-display text-2xl font-extrabold text-[var(--lrs-lime)]">Painel admin</h2>
+          <p className="text-[11px] text-white/55">
+            {jogando ? "Partida em andamento — tudo vale na hora." : "Comece uma partida para usar os poderes de pista."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="lrs-btn shrink-0 rounded-xl bg-[var(--lrs-surface2)] px-3 py-2 text-sm text-white"
+        >
+          Fechar
+        </button>
+      </div>
+
+      {/* ---- overlay de debug ---- */}
+      <AdminTitulo texto="Debug" />
+      <div className="lrs-nums mt-1 grid grid-cols-3 gap-1 rounded-xl border-2 border-[var(--lrs-ink)] bg-black/35 p-2 text-[11px] text-white/75">
+        <span>FPS {debug?.fps ?? "—"}</span>
+        <span>X {debug?.x ?? "—"}</span>
+        <span>Y {debug?.y ?? "—"}</span>
+        <span>Faixa {debug?.lane ?? "—"}</span>
+        <span>{debug?.speed ?? "—"} km/h</span>
+        <span>{debug?.distance ?? "—"} m</span>
+        <span>Obst. {debug?.obstacles ?? "—"}</span>
+        <span>Itens {debug?.items ?? "—"}</span>
+        <span className="truncate">{debug?.area ?? "—"}</span>
+      </div>
+
+      {/* ---- economia e progresso ---- */}
+      <AdminTitulo texto="Economia e progresso" />
+      <div className="mt-1 grid grid-cols-3 gap-2">
+        <AdminBtn onClick={() => onMoedas(100_000)}>+100 mil moedas</AdminBtn>
+        <AdminBtn onClick={() => onMoedas(1_000_000)}>+1 milhão</AdminBtn>
+        <AdminBtn onClick={onDesbloquearTudo}>Liberar tudo</AdminBtn>
+      </div>
+      <div className="mt-2 grid grid-cols-4 gap-2">
+        {[1, 2, 5, 20].map((m) => (
+          <AdminBtn key={m} on={flags.multiplier === m} onClick={() => onFlags({ multiplier: m })}>
+            Pontos x{m}
+          </AdminBtn>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onResetProgresso}
+        className="lrs-btn mt-2 w-full rounded-xl bg-[var(--lrs-surface2)] py-2 text-[11px] text-white"
+      >
+        Zerar progresso desta conta
+      </button>
+
+      {/* ---- controle da partida ---- */}
+      <AdminTitulo texto="Partida" />
+      <div className="mt-1 grid grid-cols-3 gap-2">
+        <AdminBtn on={flags.god} onClick={() => onFlags({ god: !flags.god })}>
+          God mode
+        </AdminBtn>
+        <AdminBtn on={flags.invuln} onClick={() => onFlags({ invuln: !flags.invuln })}>
+          Invencível
+        </AdminBtn>
+        <AdminBtn on={flags.hitbox} onClick={() => onFlags({ hitbox: !flags.hitbox })}>
+          Hitboxes
+        </AdminBtn>
+      </div>
+      <div className="mt-2">
+        <div className="flex justify-between text-[11px] text-white/70">
+          <span>Velocidade do jogo</span>
+          <span className="lrs-nums">{flags.timeScale.toFixed(1)}x</span>
+        </div>
+        <div className="mt-1 grid grid-cols-5 gap-2">
+          {[0.2, 0.5, 1, 2, 3].map((t) => (
+            <AdminBtn key={t} on={flags.timeScale === t} onClick={() => onFlags({ timeScale: t })}>
+              {t}x
+            </AdminBtn>
+          ))}
+        </div>
+      </div>
+
+      {/* ---- spawn ---- */}
+      <AdminTitulo texto="Spawnar na pista" />
+      <div className="mt-1 grid grid-cols-4 gap-2">
+        {obstaculos.map(([tipo, nome]) => (
+          <AdminBtn key={tipo} onClick={() => onSpawnObstaculo(tipo)}>
+            {nome}
+          </AdminBtn>
+        ))}
+      </div>
+      <div className="mt-2 grid grid-cols-4 gap-2">
+        {poderes.map((p) => (
+          <AdminBtn key={p} onClick={() => onSpawnPower(p)}>
+            {p}
+          </AdminBtn>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onLimparPista}
+        className="lrs-btn mt-2 w-full rounded-xl bg-[var(--lrs-surface2)] py-2 text-[11px] text-white"
+      >
+        Limpar a pista
+      </button>
+
+      {/* ---- biomas ---- */}
+      <AdminTitulo texto="Pular para a área" />
+      <div className="mt-1 grid grid-cols-3 gap-2">
+        {areas.map((nome, i) => (
+          <AdminBtn key={nome} on={debug?.area === nome} onClick={() => onIrParaBioma(i)}>
+            {nome}
+          </AdminBtn>
+        ))}
+      </div>
+
+      {/* ---- câmera e movimentação ---- */}
+      <AdminTitulo texto="Câmera e movimentação" />
+      <div className="mt-1 grid grid-cols-3 gap-2">
+        <AdminBtn on={flags.freeCam} onClick={() => onFlags({ freeCam: !flags.freeCam })}>
+          Free cam
+        </AdminBtn>
+        <AdminBtn on={flags.fly} onClick={() => onFlags({ fly: !flags.fly })}>
+          Fly
+        </AdminBtn>
+        <AdminBtn on={flags.noclip} onClick={() => onFlags({ noclip: !flags.noclip })}>
+          Noclip
+        </AdminBtn>
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <AdminBtn onClick={() => onMover("x", -1)}>◀ X</AdminBtn>
+        <AdminBtn onClick={() => onMover("y", 1)}>▲ Y</AdminBtn>
+        <AdminBtn onClick={() => onMover("x", 1)}>X ▶</AdminBtn>
+        <AdminBtn onClick={() => onMover("z", -1)}>Z ↑</AdminBtn>
+        <AdminBtn onClick={() => onMover("y", -1)}>▼ Y</AdminBtn>
+        <AdminBtn onClick={() => onMover("z", 1)}>Z ↓</AdminBtn>
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        {[0, 1, 2].map((l) => (
+          <AdminBtn key={l} onClick={() => onTeleporte(l)}>
+            Teleporte faixa {l + 1}
+          </AdminBtn>
+        ))}
+      </div>
     </div>
   );
 }

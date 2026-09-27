@@ -10,6 +10,7 @@ import * as THREE from "three";
 import { GameAudio } from "./audio";
 import { type CharPose, Dog, Humanoid, makeCop } from "./characters";
 import { animateItem, disposeItem, type ItemKind, makeItemMesh } from "./items";
+import { carregarModelos, makeModelo, type ModeloKey } from "./models";
 import { PALETTE } from "./palette";
 import { animatePower, makePowerMesh, POWERS, type PowerKind, sortearPower } from "./powerups";
 import { DEFAULT_SKIN, findSkin, type SkinKey } from "./skins";
@@ -18,6 +19,42 @@ import { makeBuildingTexture, makeRoadTexture, makeSkyTexture } from "./textures
 export type Phase = "menu" | "running" | "paused" | "caught" | "over";
 export type InputAction = "left" | "right" | "jump" | "slide";
 export type NotifyKind = "recorde" | "combo" | "especial" | "fase" | "power";
+
+/** Chaves usadas pelo painel admin para forçar o spawn de uma peça. */
+export type SpawnKey = ObstacleType;
+
+/** Interruptores da conta admin (nenhum liga sozinho numa conta normal). */
+export interface AdminFlags {
+  /** god mode: invencível + multiplicador alto */
+  god: boolean;
+  /** invencibilidade avulsa */
+  invuln: boolean;
+  /** atravessa obstáculos e faixas travadas */
+  noclip: boolean;
+  /** sai do trilho das 3 faixas e flutua */
+  fly: boolean;
+  /** câmera solta do personagem */
+  freeCam: boolean;
+  /** desenha as caixas de colisão */
+  hitbox: boolean;
+  /** velocidade do jogo (0.2 = câmera lenta, 3 = acelerado) */
+  timeScale: number;
+  /** multiplicador de moedas e pontuação */
+  multiplier: number;
+}
+
+/** Números do overlay de debug da conta admin. */
+export interface DebugInfo {
+  fps: number;
+  x: number;
+  y: number;
+  lane: number;
+  speed: number;
+  distance: number;
+  obstacles: number;
+  items: number;
+  area: string;
+}
 
 /** Power-up ativo mostrado na HUD (ícone + barra de tempo restante). */
 export interface ActivePower {
@@ -81,8 +118,16 @@ const COYOTE = 0.1;
 const BUFFER = 0.16;
 
 const SPEED_START = 14;
-const SPEED_MAX = 33;
-const SPEED_RAMP = 0.006;
+/** teto de velocidade: subiu bastante para o jogo não "empacar" fácil */
+const SPEED_MAX = 48;
+const SPEED_RAMP = 0.0055;
+
+/** impulso que a rampa/escada rolante dá (sobe ~2 blocos de altura) */
+const RAMP_LAUNCH = 16.2;
+/** altura do teto do ônibus: dá para passar por cima com o duplo pulo */
+const ONIBUS_TOP = 2.9;
+/** comprimento do "trem" (carro/ônibus) que tranca a faixa */
+const TREM_LEN = 9;
 
 const SPAWN_Z = -135;
 const DESPAWN_Z = 16;
@@ -91,7 +136,7 @@ const PLAYER_H = 1.85;
 const SLIDE_H = 0.85;
 
 /** Distância (em metros) de cada fase antes de trocar de bioma. */
-const BIOME_LEN = 750;
+const BIOME_LEN = 2200;
 
 /** Combo: tempo (s) sem coletar nada antes de o multiplicador cair. */
 const COMBO_WINDOW = 3.2;
@@ -119,7 +164,7 @@ interface Biome {
 }
 
 /** As 4 fases do GDD: bairro → escola → centro → praça, com hora do dia diferente. */
-const BIOMES: Biome[] = [
+export const BIOMES: Biome[] = [
   {
     name: "BAIRRO DA LUIZA",
     hint: "Casas, cercas e carros — manhã",
@@ -218,7 +263,7 @@ const BIOMES: Biome[] = [
  * low = pular · high = deslizar · block = desviar de faixa
  * ride = escada rolante do shopping (sobe em cima pulando)
  */
-type ObstacleType = "low" | "high" | "block" | "ride";
+export type ObstacleType = "low" | "high" | "block" | "ride";
 
 interface Obstacle {
   type: ObstacleType;
@@ -226,6 +271,12 @@ interface Obstacle {
   z: number;
   group: THREE.Object3D;
   hit: boolean;
+  /** altura a partir da qual a Luiza passa por cima (Infinity = não passa) */
+  topo: number;
+  /** rampa/escada rolante: em vez de bater, lança a Luiza para cima */
+  rampa: boolean;
+  /** carro/ônibus: vem numa faixa fixa e tranca a troca de faixa */
+  trem: boolean;
 }
 
 interface Item {
@@ -355,8 +406,10 @@ export class Game3D {
   private usedDoubleJump = false;
   /** bolha do escudo em volta da Luiza */
   private shieldMesh!: THREE.Mesh;
-  /** distância até o próximo power-up (1 a cada 30-45 s) */
+  /** distância até o próximo power-up (1 a cada 95-140 s: item raro) */
   private nextPower = 0;
+  /** metros que ainda faltam para um coração poder aparecer de novo */
+  private heartCooldown = 1200;
   /** o item especial só pode aparecer 1 vez por partida */
   private specialSpawned = false;
   /** contagem regressiva "3, 2, 1, Vai!" no início da partida */
@@ -372,6 +425,26 @@ export class Game3D {
   private copX = -1.6;
   private copTargetZ = 6.2;
   private copSurge = 0;
+
+  // ---- conta admin / debug ----
+  private admin: AdminFlags = {
+    god: false,
+    invuln: false,
+    noclip: false,
+    fly: false,
+    freeCam: false,
+    hitbox: false,
+    timeScale: 1,
+    multiplier: 1,
+  };
+  /** x livre do modo fly (fora das 3 faixas) */
+  private flyX = 0;
+  /** quadros por segundo suavizados, para o overlay de debug */
+  private fps = 60;
+  /** caixas de colisão desenhadas quando o admin liga o hitbox */
+  private hitboxGroup = new THREE.Group();
+  private hitboxTimer = 0;
+  private freeCamPos = new THREE.Vector3(0, 6, 12);
 
   // spawner
   private nextSpawn = 40;
@@ -410,10 +483,16 @@ export class Game3D {
     this.camera.position.set(0, 5.1, 8.6);
     this.camera.lookAt(0, 1.7, -10);
 
+    this.scene.add(this.hitboxGroup);
     this.roadTex = makeRoadTexture();
+    // a cerquinha em .glb vai chegando em paralelo; até lá o jogo usa a de código
+    carregarModelos();
     this.buildWorld();
     this.resize();
     this.pushHud();
+    const w = window as unknown as Record<string, unknown>;
+    if (!w.__gs) w.__gs = [];
+    (w.__gs as unknown[]).push(this);
     this.raf = requestAnimationFrame(this.loop);
   }
 
@@ -643,7 +722,8 @@ export class Game3D {
     this.chance = false;
     this.usedDoubleJump = false;
     this.shieldMesh.visible = false;
-    this.nextPower = rand(30, 45);
+    this.nextPower = rand(95, 140);
+    this.heartCooldown = 1200;
     this.specialSpawned = false;
     // contagem regressiva antes de começar a valer
     this.countdown = 3.2;
@@ -739,10 +819,10 @@ export class Game3D {
     if (this.phase !== "running") return;
     switch (action) {
       case "left":
-        if (this.lane > 0) this.lane -= 1;
+        this.tentarFaixa(this.lane - 1);
         break;
       case "right":
-        if (this.lane < 2) this.lane += 1;
+        this.tentarFaixa(this.lane + 1);
         break;
       case "jump":
         this.tryJump();
@@ -754,6 +834,28 @@ export class Game3D {
         this.sliding = SLIDE_TIME;
         break;
     }
+  }
+
+  /**
+   * Troca de faixa. Se um carro/ônibus estiver passando naquela faixa a troca
+   * é recusada (igual aos trens do Subway Surfers): a Luiza continua na faixa
+   * e leva só um tranco na câmera.
+   */
+  private tentarFaixa(alvo: number) {
+    if (alvo < 0 || alvo > 2) return;
+    if (this.faixaTravada(alvo)) {
+      this.audio.play("erro");
+      this.shake = Math.max(this.shake, 0.3);
+      this.buzz(14);
+      return;
+    }
+    this.lane = alvo;
+  }
+
+  /** true quando tem um trem (carro/ônibus) ocupando aquela faixa agora. */
+  private faixaTravada(lane: number) {
+    if (this.admin.noclip || this.admin.fly) return false;
+    return this.obstacles.some((o) => o.trem && o.lane === lane && o.z > -TREM_LEN && o.z < 5.5);
   }
 
   private tryJump() {
@@ -785,8 +887,11 @@ export class Game3D {
   // -------------------------------------------------------------------------
   private loop = (ts: number) => {
     this.raf = requestAnimationFrame(this.loop);
-    const dt = Math.min(0.05, (ts - this.lastTs) / 1000 || 0);
+    const real = Math.min(0.05, (ts - this.lastTs) / 1000 || 0);
     this.lastTs = ts;
+    if (real > 0) this.fps += (1 / real - this.fps) * 0.1;
+    // o admin pode rodar o jogo em câmera lenta ou acelerado
+    const dt = real * this.admin.timeScale;
     this.t += dt;
 
     if (this.phase === "running" || this.phase === "caught") this.update(dt);
@@ -864,13 +969,20 @@ export class Game3D {
 
     const travelled = effSpeed * dt;
     this.distance += travelled;
-    this.score += travelled * (boosting ? 2 : 1) * (this.powerTimers.has("x2") ? 2 : 1);
+    if (this.heartCooldown > 0) this.heartCooldown -= travelled;
+    this.score +=
+      travelled * (boosting ? 2 : 1) * (this.powerTimers.has("x2") ? 2 : 1) * this.multiplicador();
 
     // faixa
     this.x += (LANES[this.lane] - this.x) * Math.min(1, dt * 13);
 
-    // pulo / gravidade
-    if (this.y > 0 || this.vy > 0) {
+    // modo fly da conta admin: sem gravidade e sem trilho de faixas
+    if (this.admin.fly) {
+      this.x += (this.flyX - this.x) * Math.min(1, dt * 7);
+      this.vy *= 0.9;
+      this.y = Math.max(0, this.y + this.vy * dt);
+      this.groundedFor = 0;
+    } else if (this.y > 0 || this.vy > 0) {
       this.vy += GRAVITY * dt;
       this.y += this.vy * dt;
       this.groundedFor += dt;
@@ -891,6 +1003,8 @@ export class Game3D {
     }
 
     if (this.sliding > 0) this.sliding -= dt;
+    // conta admin: invencibilidade fica sempre renovada
+    if (this.admin.god || this.admin.invuln) this.invuln = Math.max(this.invuln, 0.5);
     if (this.invuln > 0) this.invuln -= dt;
     if (this.hitFlash > 0) this.hitFlash -= dt;
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.2);
@@ -911,13 +1025,12 @@ export class Game3D {
     if (wantBiome !== this.biomeIdx) {
       this.applyBiome(wantBiome);
       this.spawnGate();
-      const b = BIOMES[wantBiome];
-      this.float(`FASE: ${b.name}`, PALETTE.gold);
+      // sem aviso de troca de cenário: nada de nome do bioma nem lista de objetos na tela,
+      // a mudança é percebida só pelo cenário e pela música
       this.burst(this.x, 1.4, -4, PALETTE.gold, 24);
       // música da área nova entra com crossfade de ~1,5 s
       this.audio.playTrack(wantBiome);
       this.audio.play("transicao");
-      this.onNotify("fase", `${b.name} — ${b.hint}`);
       this.buzz(24);
     }
 
@@ -954,7 +1067,7 @@ export class Game3D {
     // power-up universal: 1 a cada 30-45 segundos de corrida
     this.nextPower -= dt;
     if (this.nextPower <= 0) {
-      this.nextPower = rand(30, 45);
+      this.nextPower = rand(95, 140);
       this.spawnPower();
     }
 
@@ -974,7 +1087,8 @@ export class Game3D {
     this.roadTex.offset.y -= d / 9;
 
     for (const o of this.obstacles) {
-      o.z += d;
+      // carro e ônibus têm movimento próprio: vêm um pouco mais rápido
+      o.z += o.trem ? d * 1.24 : d;
       o.group.position.z = o.z;
     }
     for (const it of this.items) {
@@ -1034,7 +1148,7 @@ export class Game3D {
     const types: ObstacleType[] =
       this.biomeIdx === 5
         ? ["low", "high", "block", "ride", "ride", "low"] // shopping tem escada rolante
-        : ["low", "high", "block", "low", "block"];
+        : ["low", "high", "block", "low", "block", "ride"];
     let type = pick(types);
     if (this.lastRow && this.lastRow.type === "high" && type === "low" && difficulty < 0.5) type = "block";
 
@@ -1050,14 +1164,16 @@ export class Game3D {
     if (free.length) {
       const lane = pick(free);
       const roll = Math.random();
-      if (roll < 0.62) {
+      if (roll < 0.74) {
         const n = 3 + Math.floor(Math.random() * 3);
         for (let i = 0; i < n; i++) this.addItem("coin", lane, SPAWN_Z - i * 3.2, 1.15);
-      } else if (roll < 0.74 && this.lives < 3) {
+      } else if (roll < 0.765 && this.lives < 3 && this.heartCooldown <= 0) {
+        // coração é item raro: no máximo um a cada ~1,2 km e só com vida faltando
+        this.heartCooldown = 1200;
         this.addItem("heart", lane, SPAWN_Z, 1.35);
-      } else if (roll < 0.86) {
+      } else if (roll < 0.785) {
         this.addItem("boost", lane, SPAWN_Z, 1.35);
-      } else if (!this.specialSpawned && this.distance > 400) {
+      } else if (!this.specialSpawned && this.distance > 700) {
         // item especial: no máximo 1 por partida
         this.specialSpawned = true;
         this.addItem("special", lane, SPAWN_Z, 1.4);
@@ -1077,11 +1193,59 @@ export class Game3D {
     this.lastRow = { type, lanes };
   }
 
+  /**
+   * Qual peça modelada em 3D entra em cada área. Devolve `undefined` quando a
+   * área usa um obstáculo desenhado em código (praia e shopping têm os seus).
+   */
+  private modeloDoObstaculo(type: ObstacleType): ModeloKey | undefined {
+    if (type === "low" || type === "ride") {
+      // pular: cerca de madeira no bairro/praça, barricada na escola, cone no centro
+      return ([
+        "cercaMadeira",
+        "cerquinha",
+        "cone",
+        "cercaMadeira",
+        undefined,
+        undefined,
+      ] as (ModeloKey | undefined)[])[this.biomeIdx];
+    }
+    if (type === "block") {
+      // desviar: carro na rua, caixas no pátio da escola, ônibus da linha azul no centro
+      return ([
+        "carro",
+        "caixas",
+        "onibus",
+        undefined,
+        undefined,
+        undefined,
+      ] as (ModeloKey | undefined)[])[this.biomeIdx];
+    }
+    return undefined;
+  }
+
+  /**
+   * Regras de cada obstáculo: até onde ele "bate", se lança a Luiza para cima
+   * (rampa/escada) e se ele é um trem (vem na faixa e tranca a troca).
+   */
+  private metaDoObstaculo(type: ObstacleType): { topo: number; rampa: boolean; trem: boolean } {
+    if (type === "ride") return { topo: 1.15, rampa: true, trem: false };
+    if (type === "block") {
+      const modelo = this.modeloDoObstaculo(type);
+      // ônibus: dá para passar por cima com o duplo pulo ou saindo de uma rampa
+      if (modelo === "onibus") return { topo: ONIBUS_TOP, rampa: false, trem: true };
+      // carro: não dá para pular, e enquanto ele está do lado a faixa fica travada
+      if (modelo === "carro") return { topo: Infinity, rampa: false, trem: true };
+      return { topo: Infinity, rampa: false, trem: false };
+    }
+    return { topo: type === "low" ? 0.95 : Infinity, rampa: false, trem: false };
+  }
+
   private addObstacle(type: ObstacleType, lane: number, z: number) {
     const group = this.buildObstacle(type);
     group.position.set(LANES[lane], 0, z);
     this.scene.add(group);
-    this.obstacles.push({ type, lane, z, group, hit: false });
+    const meta = this.metaDoObstaculo(type);
+    this.obstacles.push({ type, lane, z, group, hit: false, ...meta });
   }
 
   /**
@@ -1185,8 +1349,27 @@ export class Game3D {
       return group;
     }
 
+    if (type === "ride") {
+      // rampa turbo: dá para pular em cima dela (modelo .glb)
+      const rampa = makeModelo("rampa");
+      if (rampa) {
+        group.add(rampa);
+        return group;
+      }
+    }
+
     if (type === "ride" || type === "low") {
-      // baixo: pular. Cerca (bairro), banco (escola/praça), cone+caixa (centro)
+      // baixo: pular. Cada área tem a sua peça modelada em 3D.
+      const modelo = this.modeloDoObstaculo(type);
+      const peca = modelo ? makeModelo(modelo) : null;
+      if (peca) {
+        group.add(peca);
+        // uma leve variação de ângulo para não parecer tudo igual
+        peca.rotation.y += rand(-0.06, 0.06);
+        return group;
+      }
+
+      // reserva: se o modelo ainda não carregou, usamos a cerca desenhada em código
       const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.55, 0.5), mat(b.obstacle.low));
       body.position.y = 0.72;
       group.add(body);
@@ -1223,7 +1406,14 @@ export class Game3D {
         group.add(leaf);
       }
     } else {
-      // bloqueia a faixa: muro (bairro/escola), ônibus (centro), pedra do lago (praça)
+      // bloqueia a faixa: carro (bairro), caixas (escola), ônibus (centro)...
+      const modelo = this.modeloDoObstaculo(type);
+      const peca = modelo ? makeModelo(modelo) : null;
+      if (peca) {
+        group.add(peca);
+        peca.rotation.y += rand(-0.04, 0.04);
+        return group;
+      }
       if (this.biomeIdx === 2) {
         const bus = new THREE.Mesh(new THREE.BoxGeometry(2, 2.5, 1.5), mat(b.obstacle.block));
         bus.position.y = 1.25;
@@ -1306,6 +1496,19 @@ export class Game3D {
         emissiveIntensity: emissive,
         roughness: 0.7,
       });
+
+    // peças modeladas em 3D que ficam na calçada de algumas áreas
+    const modelado: (ModeloKey | undefined)[] = ["casinha", "cone", "placa", undefined, undefined, undefined];
+    const alvo = modelado[this.biomeIdx];
+    if (alvo && Math.random() < 0.6) {
+      const peca = makeModelo(alvo);
+      if (peca) {
+        group.add(peca);
+        // casa/placa/cone modelados ficam retos e rente à calçada
+        group.userData.alinhado = true;
+        return group;
+      }
+    }
 
     switch (this.biomeIdx) {
       case 0: {
@@ -1554,8 +1757,14 @@ export class Game3D {
   private spawnProp() {
     const group = this.buildProp();
     const side = Math.random() < 0.5 ? -1 : 1;
-    group.position.set(side * (ROAD_W / 2 + rand(2.2, 3.2)), 0, SPAWN_Z - rand(0, 12));
-    group.rotation.y = side > 0 ? -0.3 : 0.3;
+    if (group.userData.alinhado) {
+      // sem sorteio de posição: encostado na calçada e virado para a pista
+      group.position.set(side * (ROAD_W / 2 + 2.6), 0, SPAWN_Z);
+      group.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+    } else {
+      group.position.set(side * (ROAD_W / 2 + rand(2.2, 3.2)), 0, SPAWN_Z - rand(0, 12));
+      group.rotation.y = side > 0 ? -0.3 : 0.3;
+    }
     this.scene.add(group);
     this.props.push({ group, z: group.position.z });
   }
@@ -1563,6 +1772,9 @@ export class Game3D {
   private recycle(group: THREE.Object3D) {
     this.scene.remove(group);
     group.traverse((child) => {
+      // malhas de modelo .glb são compartilhadas entre todos os obstáculos:
+      // apagar aqui deixaria os próximos invisíveis
+      if (child.userData.compartilhado) return;
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
         const mat = child.material as THREE.Material | THREE.Material[];
@@ -1647,15 +1859,32 @@ export class Game3D {
       if (Math.abs(o.z) > 1.05) continue;
       if (Math.abs(LANES[o.lane] - laneNow) > 1.1) continue;
 
+      // rampa e escada rolante funcionam como plataforma: em vez de bater,
+      // a Luiza sobe nelas e é lançada ~2 blocos para cima (dá para passar por
+      // cima de um ônibus).
+      if (o.rampa) {
+        o.hit = true;
+        this.vy = RAMP_LAUNCH;
+        this.sliding = 0;
+        this.groundedFor = COYOTE + 1;
+        this.usedDoubleJump = false;
+        this.audio.play("boost");
+        this.float("RAMPA!", PALETTE.lime);
+        this.burst(this.x, 0.6, 0, PALETTE.lime, 18);
+        this.buzz(18);
+        continue;
+      }
+
       let collides = false;
-      if (o.type === "low") collides = feet < 0.95 - 0.1;
+      if (o.type === "low") collides = feet < 0.85;
       else if (o.type === "high") collides = headTop > 1.6;
-      else if (o.type === "ride") collides = feet < 1.15; // escada rolante: dá para subir em cima
-      else collides = true;
+      else collides = feet < o.topo;
 
       if (collides) {
         o.hit = true;
-        const atravessa = this.invuln > 0 || this.boost > 0 || this.powerTimers.has("fantasma");
+        // o boost de velocidade NÃO dá mais invencibilidade
+        const atravessa =
+          this.invuln > 0 || this.admin.noclip || this.admin.god || this.powerTimers.has("fantasma");
         if (atravessa) {
           this.burst(this.x, 1, 0, PALETTE.lime, 14);
         } else if (this.shield) {
@@ -1708,8 +1937,8 @@ export class Game3D {
 
     switch (it.kind) {
       case "coin":
-        this.coins += this.combo;
-        this.score += 10 * this.combo;
+        this.coins += this.combo * this.multiplicador();
+        this.score += 10 * this.combo * this.multiplicador();
         this.audio.play("coin");
         this.buzz(8);
         this.burst(LANES[it.lane], it.y, it.z, PALETTE.gold, 8);
@@ -1896,6 +2125,14 @@ export class Game3D {
     this.sirenL.color.set(Math.floor(this.t * 6) % 2 === 0 ? PALETTE.pink : PALETTE.cyan);
     this.sirenL.position.set(this.copX, 2.6, this.copZ - 0.4);
 
+    // free cam do admin: a câmera fica onde ele deixou
+    if (this.admin.freeCam) {
+      this.camera.position.copy(this.freeCamPos);
+      this.camera.lookAt(this.freeCamPos.x, 1.2, this.freeCamPos.z - 16);
+      this.desenharHitbox(dt);
+      return;
+    }
+
     // câmera: segue de leve a faixa, sobe com a velocidade, treme na batida
     const camTargetX = this.x * 0.42;
     const shake = this.reduceFx ? 0 : this.shake * 0.28;
@@ -1957,5 +2194,146 @@ export class Game3D {
       if (it.kind === "power") animatePower(it.obj, it.y, this.t);
       else animateItem(it.kind, it.obj, it.y, this.t);
     }
+
+    this.desenharHitbox(dt);
+  }
+
+  // -------------------------------------------------------------------------
+  // conta admin — nada aqui liga sozinho numa conta normal
+  // -------------------------------------------------------------------------
+
+  /** Multiplicador de moedas/pontos (god mode usa 10 se nada foi escolhido). */
+  private multiplicador() {
+    if (this.admin.multiplier > 1) return this.admin.multiplier;
+    return this.admin.god ? 10 : 1;
+  }
+
+  /** Liga/desliga os poderes da conta admin. */
+  setAdmin(flags: Partial<AdminFlags>) {
+    this.admin = { ...this.admin, ...flags };
+    if (this.admin.fly) this.flyX = this.x;
+    if (this.admin.freeCam) this.freeCamPos.set(this.x, 6, 12);
+    if (!this.admin.hitbox) this.limparHitbox();
+  }
+
+  /** Números do overlay de debug (FPS, coordenadas, contagem de objetos). */
+  getDebug(): DebugInfo {
+    return {
+      fps: Math.round(this.fps),
+      x: Number(this.x.toFixed(2)),
+      y: Number(this.y.toFixed(2)),
+      lane: this.lane,
+      speed: Number((this.speed * 3.6).toFixed(1)),
+      distance: Math.floor(this.distance),
+      obstacles: this.obstacles.length,
+      items: this.items.length,
+      area: BIOMES[this.biomeIdx].name,
+    };
+  }
+
+  /** Enche o cofrinho da partida (moedas ilimitadas). */
+  adminMoedas(quanto = 100_000) {
+    this.coins += quanto;
+    this.float(`+${quanto.toLocaleString("pt-BR")}`, PALETTE.gold);
+    this.pushHud();
+  }
+
+  /** Força o spawn de um obstáculo do tipo escolhido, na faixa da Luiza. */
+  adminSpawnObstaculo(type: SpawnKey) {
+    this.addObstacle(type, this.lane, SPAWN_Z + 40);
+  }
+
+  /** Força o spawn de um power-up específico (ou sorteado). */
+  adminSpawnPower(kind?: PowerKind) {
+    if (!kind) {
+      this.spawnPower();
+      return;
+    }
+    const obj = makePowerMesh(kind);
+    obj.position.set(LANES[this.lane], 1.5, SPAWN_Z + 40);
+    this.scene.add(obj);
+    this.items.push({
+      kind: "power",
+      power: kind,
+      lane: this.lane,
+      z: SPAWN_Z + 40,
+      y: 1.5,
+      obj,
+      taken: false,
+      fly: 0,
+      x: LANES[this.lane],
+    });
+  }
+
+  /** Limpa a pista (remove obstáculos e itens da tela). */
+  adminLimparPista() {
+    for (const o of this.obstacles) this.recycle(o.group);
+    this.obstacles = [];
+    for (const it of this.items) {
+      this.scene.remove(it.obj);
+      disposeItem(it.obj);
+    }
+    this.items = [];
+  }
+
+  /** Pula direto para o começo de um bioma, sem percorrer a distância. */
+  adminIrParaBioma(idx: number) {
+    const alvo = ((idx % BIOMES.length) + BIOMES.length) % BIOMES.length;
+    this.distance = alvo * BIOME_LEN + 4;
+    this.applyBiome(alvo);
+    this.adminLimparPista();
+    this.audio.playTrack(alvo);
+    this.float(`→ ${BIOMES[alvo].name}`, PALETTE.cyan);
+    this.pushHud();
+  }
+
+  /** Teleporte rápido: joga a Luiza para uma faixa e altura. */
+  adminTeleporte(lane: number, altura = 0) {
+    this.lane = Math.max(0, Math.min(2, lane));
+    this.x = LANES[this.lane];
+    this.flyX = this.x;
+    this.y = altura;
+    this.vy = 0;
+  }
+
+  /** Move a free cam / o personagem em modo fly. */
+  adminMover(eixo: "x" | "y" | "z", passo: number) {
+    if (this.admin.freeCam) {
+      this.freeCamPos[eixo] += passo;
+      return;
+    }
+    if (this.admin.fly) {
+      if (eixo === "x") this.flyX = Math.max(-14, Math.min(14, this.flyX + passo));
+      if (eixo === "y") this.y = Math.max(0, this.y + passo);
+    }
+  }
+
+  private limparHitbox() {
+    for (const child of [...this.hitboxGroup.children]) {
+      this.hitboxGroup.remove(child);
+      if (child instanceof THREE.Box3Helper) child.dispose?.();
+    }
+  }
+
+  /**
+   * Desenha as caixas de colisão dos obstáculos (ferramenta de teste do
+   * admin). Refaz a lista 10x por segundo para não pesar.
+   */
+  private desenharHitbox(dt: number) {
+    if (!this.admin.hitbox) return;
+    this.hitboxTimer -= dt;
+    if (this.hitboxTimer > 0) return;
+    this.hitboxTimer = 0.1;
+    this.limparHitbox();
+    for (const o of this.obstacles) {
+      const caixa = new THREE.Box3().setFromObject(o.group);
+      const cor = o.rampa ? 0x3ce87a : o.trem ? 0xffc93c : 0xff2e7e;
+      this.hitboxGroup.add(new THREE.Box3Helper(caixa, new THREE.Color(cor)));
+    }
+    const eu = new THREE.Box3().setFromCenterAndSize(
+      new THREE.Vector3(this.x, this.y + (this.sliding > 0 ? SLIDE_H : PLAYER_H) / 2, 0),
+      new THREE.Vector3(0.9, this.sliding > 0 ? SLIDE_H : PLAYER_H, 0.9),
+    );
+    this.hitboxGroup.add(new THREE.Box3Helper(eu, new THREE.Color(0x29d9ff)));
   }
 }

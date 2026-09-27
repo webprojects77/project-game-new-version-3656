@@ -1,36 +1,39 @@
-# Luiza Run Surfs — terminar TUDO do GDD/specs visuais
+# Luiza Run Surfs — lista de bugs/melhorias do PDF
 
-Doc: /home/user/Attachments/luiza_run_surfs_specs_visuais_lEU1uP.md
+## Bloco A — objetos 3D (engine + models.ts)
+- [ ] rampa de trás pra frente → inverter
+- [ ] ônibus: escala (comprimento estava no eixo X) + rotação; pulável com duplo pulo
+- [ ] carro: escala + rotação; vem numa faixa fixa (tipo trem) e trava a troca de faixa
+- [ ] casas do cenário: alinhadas e rente à calçada
+- [ ] escada do shopping + rampa: plataforma que lança 2 blocos de altura
+- [ ] remover DEBUG_TEMP do engine3d.ts
 
-## Fase 1 — motor (COMPLETA, tsc 0 erros)
-- [x] powerups.ts (8 power-ups), items.ts (gravação temática), 6 áreas (+Praia +Shopping)
-- [x] HudState powers/shield/chance/area/areaName; Item power/fly/x
-- [x] contagem regressiva, timers, x2, fuga, ímã, crossfade de área, recorde
-- [x] spawnPower/aplicarPower, colisões (ride, fantasma, escudo estala), duplo pulo
-- [x] segunda chance no hit(), pushHud, obstáculos e props exclusivos por área
-- [x] updateVisuals: bolha, fantasma translúcido, rastro do turbo, fly dos itens
+## Bloco B — dificuldade
+- [ ] SPEED_MAX maior
+- [ ] boost sem invencibilidade
+- [ ] power-ups muito mais raros
+- [ ] coração raro (cooldown de distância)
 
-## Fase 2 — áudio (COMPLETA)
-- [x] audio.ts: 2 decks + playTrack(area) com crossfade 1,5 s, 6 trilhas
-- [x] 15 SFX novos gerados em packages/web/public/audio/
+## Bloco C — biomas
+- [ ] remover aviso de troca de cenário
+- [ ] BIOME_LEN muito maior
 
-## Fase 3 — UI (em andamento)
-- [x] skins.ts: Luiza de Praia (comum) + Luiza do Shopping (rara)
-- [x] HUD: power-ups ativos, escudo, slot Segunda Chance, coração quebrando, nome da área
-- [x] styles.css: lrs-heart-break + lrs-coin-fly
-- [x] missions.ts: 3 missões diárias sorteadas pela data, 5k-15k moedas, reset por dia
-- [x] SkinPicker: preview grande + Selecionar, borda ciano/rosa, seta voltar
-- [x] Settings: seção Conta (apelido + salvar) + versão do jogo
-- [x] Ranking: estado vazio ilustrado + linha própria dourada com brilho
-- [x] GameOver: animação das moedas entrando no cofrinho
-- [x] Overlay de Missões diárias + botão no menu
-- [x] game-shell: sons de UI (clique/abrirtela/erro/desbloqueio), wiring das missões, apelido
+## Bloco D — configurações
+- [ ] nome: sem espaço, só letras/números, 4-8, 1x por mês, 20.000 moedas
+- [ ] mudo: sliders animam até 0% e travam; voltam ao valor ao desativar
+- [ ] controles: "Organizar botões" (tamanho + posição), remover sensibilidade do swipe
+- [ ] senha na criação da conta + exigir para restaurar progresso
+- [ ] Como jogar: remover seção "Fases"
+- [ ] Personagens: remover balão de fala e a frase "Todas jogam igual..."
 
-## Bugs do usuário (CORRIGIDOS)
-- [x] policial e cachorro só aparecem quando há dano (chamarPolicial + visible=perseguindo)
-- [x] Luiza corria de costas: rotation.y = Math.PI (policial idem), cachorro já ok
+## Bloco E — conta admin (adm / 9764, 5x no Confirmar)
+- [ ] login admin
+- [ ] economia: moedas infinitas, multiplicador, tudo desbloqueado, resetar progresso
+- [ ] partida: invencibilidade, spawnar obstáculo/power-up, velocidade manual, pular bioma
+- [ ] debug: free cam, fly, noclip, teleporte, overlay FPS/hitbox/coordenadas, god mode
+- [ ] skins exclusivas da admin (policial e cachorro)
 
-## Fase 4 — fechamento
-- [ ] design.md, apagar task.md + music.mp3 antigo
-- [ ] tsc --noEmit, bun run build, screenshot Playwright (/tmp/shotv2.py)
-- [ ] contar linhas, deliver (website, porta 4200), mensagem PT-BR
+## Fechamento
+- [ ] tsc -p tsconfig.app.json --noEmit
+- [ ] teste visual Playwright
+- [ ] apagar task.md, build, contar linhas, deliver PT-BR

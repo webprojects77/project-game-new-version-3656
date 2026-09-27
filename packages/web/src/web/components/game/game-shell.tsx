@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  type AdminFlags,
+  BIOMES,
+  type DebugInfo,
   type FloatingText,
   Game3D,
   type GameOverPayload,
   type HudState,
   type InputAction,
   type NotifyKind,
+  type ObstacleType,
   type Phase,
 } from "../../game/engine3d";
+import type { PowerKind } from "../../game/powerups";
 import { GameAudio } from "../../game/audio";
 import { DEFAULT_SKIN, findSkin, isUnlocked, type Progress, SKINS, type SkinKey } from "../../game/skins";
 import {
@@ -22,6 +27,10 @@ import { useSubmitScore, useTopScores } from "../../queries/scores";
 import { Hud } from "./hud";
 import { Notifications, type Toast } from "./notifications";
 import {
+  AdminPanel,
+  ButtonLayout,
+  diasParaTrocarNome,
+  estiloBotoes,
   Frame,
   GameOver,
   type GameSettings,
@@ -29,11 +38,13 @@ import {
   type LocalRun,
   Menu,
   NameGate,
+  NOME_CUSTO,
   Paused,
   Ranking,
   Missions,
   Settings,
   SkinPicker,
+  validarNome,
 } from "./overlays";
 
 const BEST_KEY = "lrs.best";
@@ -43,8 +54,36 @@ const SPECIALS_KEY = "lrs.specials";
 const SETTINGS_KEY = "lrs.settings";
 const SKIN_KEY = "lrs.skin";
 const RUNS_KEY = "lrs.local.runs";
+const PASS_KEY = "lrs.pass";
+const NAME_AT_KEY = "lrs.name.lastChange";
+const ADMIN_KEY = "lrs.admin";
 
-type Panel = "none" | "howto" | "ranking" | "name" | "skins" | "settings" | "missions";
+/** Credenciais da conta admin (vêm da especificação do trabalho). */
+const ADMIN_NAME = "adm";
+const ADMIN_PASS = "9764";
+
+/** Interruptores admin desligados — estado de uma conta normal. */
+const ADMIN_OFF: AdminFlags = {
+  god: false,
+  invuln: false,
+  noclip: false,
+  fly: false,
+  freeCam: false,
+  hitbox: false,
+  timeScale: 1,
+  multiplier: 1,
+};
+
+type Panel =
+  | "none"
+  | "howto"
+  | "ranking"
+  | "name"
+  | "skins"
+  | "settings"
+  | "missions"
+  | "botoes"
+  | "admin";
 
 const EMPTY_HUD: HudState = {
   score: 0,
@@ -70,10 +109,15 @@ const DEFAULT_SETTINGS: GameSettings = {
   sfxVolume: 0.9,
   muted: false,
   onScreenButtons: false,
-  swipeSensitivity: 0.5,
   vibration: true,
   reduceFx: false,
+  btnScale: 1,
+  btnBottom: 0,
+  btnSpread: 1,
 };
+
+/** distância de swipe (px) para contar como gesto de faixa/pulo/slide */
+const SWIPE_LIMIAR = 31;
 
 function loadSettings(): GameSettings {
   try {
@@ -118,6 +162,13 @@ export function GameShell() {
     return saved && SKINS.some((s) => s.key === saved) ? saved : DEFAULT_SKIN;
   });
   const [fatal, setFatal] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem(ADMIN_KEY) === "1");
+  const [adminFlags, setAdminFlags] = useState<AdminFlags>(ADMIN_OFF);
+  const [debug, setDebug] = useState<DebugInfo | null>(null);
+  const [nameChangedAt, setNameChangedAt] = useState<number | null>(() => {
+    const raw = localStorage.getItem(NAME_AT_KEY);
+    return raw ? Number(raw) : null;
+  });
   const [missoes] = useState(() => missoesDoDia());
   const [missionProgress, setMissionProgress] = useState<MissionProgress>(carregarProgresso);
   const missoesRef = useRef(missoes);
@@ -136,7 +187,7 @@ export function GameShell() {
   const bestRef = useRef(best);
   bestRef.current = best;
 
-  const progress: Progress = { coins, best, specials };
+  const progress: Progress = { coins, best, specials, admin: isAdmin };
 
   const notify = useCallback((kind: NotifyKind, text: string) => {
     const toast: Toast = { id: Date.now() + Math.random(), kind, text };
@@ -325,8 +376,7 @@ export function GameShell() {
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
-    // sensibilidade 0 = precisa de swipe longo (48px); 1 = swipe curtinho (14px)
-    const threshold = 48 - settings.swipeSensitivity * 34;
+    const threshold = SWIPE_LIMIAR;
     let sx = 0;
     let sy = 0;
     let time = 0;
@@ -353,7 +403,22 @@ export function GameShell() {
       el.removeEventListener("pointerdown", down);
       el.removeEventListener("pointerup", up);
     };
-  }, [input, settings.swipeSensitivity]);
+  }, [input]);
+
+  // ---- conta admin: repassa os interruptores para o motor ---------------
+  useEffect(() => {
+    gameRef.current?.setAdmin(isAdmin ? adminFlags : ADMIN_OFF);
+  }, [adminFlags, isAdmin]);
+
+  // ---- overlay de debug: lê os números do motor 3x por segundo ----------
+  useEffect(() => {
+    if (!isAdmin || panel !== "admin") return;
+    const id = window.setInterval(() => {
+      const g = gameRef.current;
+      if (g) setDebug(g.getDebug());
+    }, 330);
+    return () => window.clearInterval(id);
+  }, [isAdmin, panel]);
 
   // ---- ações ------------------------------------------------------------
   /** som curtinho de interface */
@@ -390,32 +455,97 @@ export function GameShell() {
     gameRef.current?.setSkin(next);
   }
 
-  function saveName(name: string) {
-    const clean = name.trim().slice(0, 16);
-    if (!clean) {
-      sfx("erro");
-      return;
+  /**
+   * Criação da conta (tela inicial): apelido + senha, com o caminho escondido
+   * da conta admin. Devolve null quando deu certo ou o texto do erro.
+   */
+  function criarConta(nome: string, senha: string, chave: string): string | null {
+    const admin = nome.toLowerCase() === ADMIN_NAME && chave === ADMIN_PASS;
+
+    // a conta admin tem 3 letras, então ela só passa pelo campo de chave
+    if (!admin) {
+      const problema = validarNome(nome);
+      if (problema) {
+        sfx("erro");
+        return problema;
+      }
+      if (nome.toLowerCase() === ADMIN_NAME) {
+        sfx("erro");
+        return "Esse apelido é reservado.";
+      }
     }
-    sfx("clique");
-    localStorage.setItem(NAME_KEY, clean);
-    setPlayerName(clean);
+
+    sfx(admin ? "desbloqueio" : "clique");
+    localStorage.setItem(NAME_KEY, nome);
+    localStorage.setItem(PASS_KEY, senha);
+    localStorage.setItem(ADMIN_KEY, admin ? "1" : "0");
+    setPlayerName(nome);
+    setIsAdmin(admin);
     setPanel("none");
+    if (admin) notify("power", "Conta admin liberada — painel nas configurações.");
+    return null;
   }
 
-  /** apelido salvo pela seção Conta das configurações (não fecha o painel) */
-  function saveNameInline(name: string) {
-    const clean = name.trim().slice(0, 16);
-    if (!clean) {
-      sfx("erro");
-      return;
+  /**
+   * Troca de apelido pelas configurações: cobra 20.000 moedas e só libera
+   * uma vez por mês. A conta admin passa direto.
+   */
+  function trocarNome(nome: string): string | null {
+    if (isAdmin) {
+      localStorage.setItem(NAME_KEY, nome);
+      setPlayerName(nome);
+      sfx("desbloqueio");
+      return null;
     }
+
+    const problema = validarNome(nome);
+    if (problema) {
+      sfx("erro");
+      return problema;
+    }
+    if (nome.toLowerCase() === ADMIN_NAME) {
+      sfx("erro");
+      return "Esse apelido é reservado.";
+    }
+    const dias = diasParaTrocarNome(nameChangedAt);
+    if (dias > 0) {
+      sfx("erro");
+      return `Só 1 troca por mês — faltam ${dias} dia(s).`;
+    }
+    if (coins < NOME_CUSTO) {
+      sfx("erro");
+      return `Faltam ${(NOME_CUSTO - coins).toLocaleString("pt-BR")} moedas.`;
+    }
+
+    const restante = coins - NOME_CUSTO;
+    const agora = Date.now();
+    localStorage.setItem(COINS_KEY, String(restante));
+    localStorage.setItem(NAME_KEY, nome);
+    localStorage.setItem(NAME_AT_KEY, String(agora));
+    setCoins(restante);
+    setPlayerName(nome);
+    setNameChangedAt(agora);
     sfx("desbloqueio");
-    localStorage.setItem(NAME_KEY, clean);
-    setPlayerName(clean);
+    return null;
+  }
+
+  /** Restaurar progresso: exige a senha da conta (ou nada, na admin). */
+  function resetProgressComSenha(senha: string): string | null {
+    const salva = localStorage.getItem(PASS_KEY);
+    if (!isAdmin && salva && senha !== salva) {
+      sfx("erro");
+      return "Senha incorreta.";
+    }
+    sfx("clique");
+    resetProgress();
+    return null;
   }
 
   function resetProgress() {
-    for (const key of [BEST_KEY, COINS_KEY, SPECIALS_KEY, RUNS_KEY]) localStorage.removeItem(key);
+    for (const key of [BEST_KEY, COINS_KEY, SPECIALS_KEY, RUNS_KEY, NAME_AT_KEY]) {
+      localStorage.removeItem(key);
+    }
+    setNameChangedAt(null);
     localStorage.setItem(SKIN_KEY, DEFAULT_SKIN);
     setBest(0);
     setCoins(0);
@@ -426,8 +556,38 @@ export function GameShell() {
     gameRef.current?.setBest(0);
   }
 
+  // ---- poderes da conta admin -------------------------------------------
+  /** liga/desliga interruptores e repassa para o motor pelo efeito */
+  function mudarFlags(next: Partial<AdminFlags>) {
+    sfx("clique");
+    setAdminFlags((f) => ({ ...f, ...next }));
+  }
+
+  /** moedas ilimitadas: entram no cofrinho salvo e também na partida */
+  function adminMoedas(quanto: number) {
+    sfx("desbloqueio");
+    const total = coins + quanto;
+    localStorage.setItem(COINS_KEY, String(total));
+    setCoins(total);
+    gameRef.current?.adminMoedas(quanto);
+  }
+
+  /** libera tudo: moedas, recorde e itens especiais no teto */
+  function adminLiberarTudo() {
+    sfx("desbloqueio");
+    localStorage.setItem(COINS_KEY, String(9_999_999));
+    localStorage.setItem(BEST_KEY, String(9_999_999));
+    localStorage.setItem(SPECIALS_KEY, String(99));
+    setCoins(9_999_999);
+    setBest(9_999_999);
+    setSpecials(99);
+    gameRef.current?.setBest(9_999_999);
+    notify("power", "Tudo liberado nesta conta.");
+  }
+
   const showHud = phase === "running" || phase === "paused" || phase === "caught";
   const needsName = !playerName.trim();
+  const btnEstilo = estiloBotoes(settings);
   /** quantas missões do dia já estão concluídas (badge do menu) */
   const missionsDone = missoes.filter((m) => estaConcluida(m, missionProgress)).length;
 
@@ -469,7 +629,7 @@ export function GameShell() {
             onToggleMute={toggleMute}
           />
           {settings.onScreenButtons ? (
-            <div className="absolute inset-x-0 bottom-4 z-20 grid grid-cols-4 gap-2 px-4">
+            <div className="absolute z-20 grid grid-cols-4 gap-2 px-2" style={btnEstilo.caixa}>
               {(
                 [
                   ["◀", "left"],
@@ -483,7 +643,8 @@ export function GameShell() {
                   type="button"
                   aria-label={action}
                   onClick={() => input(action)}
-                  className="lrs-btn rounded-2xl bg-[rgba(51,22,90,0.75)] py-3 text-xl text-white"
+                  style={btnEstilo.botao}
+                  className="lrs-btn rounded-2xl bg-[rgba(51,22,90,0.75)] text-white"
                 >
                   {label}
                 </button>
@@ -503,7 +664,7 @@ export function GameShell() {
         <Frame>
           <NameGate
             initial={playerName}
-            onConfirm={saveName}
+            onConfirm={criarConta}
             onCancel={needsName ? undefined : () => setPanel("none")}
           />
         </Frame>
@@ -577,10 +738,64 @@ export function GameShell() {
           <Settings
             settings={settings}
             onChange={(next) => setSettings((s) => ({ ...s, ...next }))}
-            onReset={resetProgress}
+            onReset={resetProgressComSenha}
             playerName={playerName}
-            onSaveName={saveNameInline}
+            coins={coins}
+            admin={isAdmin}
+            ultimaTrocaNome={nameChangedAt}
+            onSaveName={trocarNome}
+            onOpenButtons={() => abrirPainel("botoes")}
+            onOpenAdmin={isAdmin ? () => abrirPainel("admin") : undefined}
             onClose={() => abrirPainel("none")}
+          />
+        </Frame>
+      )}
+
+      {panel === "botoes" && (
+        <>
+          <Frame>
+            <ButtonLayout
+              settings={settings}
+              onChange={(next) => setSettings((s) => ({ ...s, ...next }))}
+              onClose={() => abrirPainel("settings")}
+            />
+          </Frame>
+          {/* prévia ao vivo: as setas de verdade, por cima do painel */}
+          <div
+            className="pointer-events-none absolute z-40 grid grid-cols-4 gap-2 px-2"
+            style={btnEstilo.caixa}
+          >
+            {["◀", "▲", "▼", "▶"].map((label) => (
+              <span
+                key={label}
+                style={btnEstilo.botao}
+                className="lrs-btn rounded-2xl bg-[rgba(51,22,90,0.9)] text-center text-white"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+
+      {panel === "admin" && isAdmin && (
+        <Frame>
+          <AdminPanel
+            flags={adminFlags}
+            debug={debug}
+            areas={BIOMES.map((b) => b.name)}
+            jogando={phase === "running" || phase === "paused"}
+            onFlags={mudarFlags}
+            onMoedas={adminMoedas}
+            onSpawnObstaculo={(t: ObstacleType) => gameRef.current?.adminSpawnObstaculo(t)}
+            onSpawnPower={(k?: PowerKind) => gameRef.current?.adminSpawnPower(k)}
+            onLimparPista={() => gameRef.current?.adminLimparPista()}
+            onIrParaBioma={(i) => gameRef.current?.adminIrParaBioma(i)}
+            onTeleporte={(l) => gameRef.current?.adminTeleporte(l)}
+            onMover={(eixo, passo) => gameRef.current?.adminMover(eixo, passo)}
+            onDesbloquearTudo={adminLiberarTudo}
+            onResetProgresso={resetProgress}
+            onClose={() => abrirPainel("settings")}
           />
         </Frame>
       )}

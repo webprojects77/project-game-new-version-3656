@@ -14,9 +14,11 @@ export type SkinKey =
   | "escolar"
   | "shopping"
   | "neon"
-  | "polaroid";
+  | "polaroid"
+  | "policial"
+  | "cachorro";
 
-export type SkinTier = "padrao" | "comum" | "rara" | "epica" | "especial";
+export type SkinTier = "padrao" | "comum" | "rara" | "epica" | "especial" | "admin";
 
 export interface BodyPalette {
   skin: string;
@@ -178,6 +180,45 @@ export const SKINS: SkinInfo[] = [
       detail: "#29D9FF",
     },
   },
+  // --- exclusivas da conta admin: variações do policial e do cachorro ---
+  {
+    key: "policial",
+    name: "Luiza Policial",
+    desc: "Exclusiva da conta admin: farda do policial que persegue na pista.",
+    tier: "admin",
+    tierColor: "#3CE87A",
+    cost: 0,
+    record: 0,
+    specials: 0,
+    body: {
+      skin: "#F3C29A",
+      hair: "#1A1030",
+      shirt: "#1F3D8C",
+      shirtAlt: "#14275A",
+      pants: "#1A1030",
+      shoes: "#0E0A1C",
+      detail: "#FFC93C",
+    },
+  },
+  {
+    key: "cachorro",
+    name: "Luiza Cachorro",
+    desc: "Exclusiva da conta admin: as cores do cachorro farejador.",
+    tier: "admin",
+    tierColor: "#3CE87A",
+    cost: 0,
+    record: 0,
+    specials: 0,
+    body: {
+      skin: "#E8B183",
+      hair: "#7A4A22",
+      shirt: "#C88A4A",
+      shirtAlt: "#8A5A28",
+      pants: "#3A2118",
+      shoes: "#1A1030",
+      detail: "#FFFFFF",
+    },
+  },
 ];
 
 export const DEFAULT_SKIN: SkinKey = "classica";
@@ -190,10 +231,15 @@ export interface Progress {
   coins: number;
   best: number;
   specials: number;
+  /** conta admin: libera tudo, inclusive as skins exclusivas */
+  admin?: boolean;
 }
 
 /** Uma skin está liberada quando bate TODOS os requisitos da camada dela. */
 export function isUnlocked(skin: SkinInfo, p: Progress) {
+  // a conta admin tem acesso irrestrito a todas as skins
+  if (p.admin) return true;
+  if (skin.tier === "admin") return false;
   if (skin.tier === "padrao") return true;
   if (skin.tier === "especial") return p.specials >= skin.specials;
   return p.coins >= skin.cost && p.best >= skin.record;
@@ -201,7 +247,8 @@ export function isUnlocked(skin: SkinInfo, p: Progress) {
 
 /** Texto do requisito que falta, já formatado em pt-BR. */
 export function requirementLabel(skin: SkinInfo, p: Progress): string[] {
-  if (skin.tier === "padrao") return [];
+  if (p.admin || skin.tier === "padrao") return [];
+  if (skin.tier === "admin") return ["só na conta admin"];
   if (skin.tier === "especial") {
     return [`${p.specials}/${skin.specials} itens especiais`];
   }
