@@ -44,8 +44,10 @@ import {
   Missions,
   Settings,
   SkinPicker,
+  type SubmitState,
   validarNome,
 } from "./overlays";
+import { authClient } from "../../lib/auth";
 
 const BEST_KEY = "lrs.best";
 const NAME_KEY = "lrs.name";
@@ -150,7 +152,7 @@ export function GameShell() {
   const [best, setBest] = useState(() => Number(localStorage.getItem(BEST_KEY) || 0));
   const [isNewBest, setIsNewBest] = useState(false);
   const [playerName, setPlayerName] = useState(() => localStorage.getItem(NAME_KEY) || "");
-  const [submitState, setSubmitState] = useState<"sending" | "record" | "kept" | "error">("sending");
+  const [submitState, setSubmitState] = useState<SubmitState>("sending");
   const [floats, setFloats] = useState<FloatingText[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [coins, setCoins] = useState(() => Number(localStorage.getItem(COINS_KEY) || 0));
@@ -178,6 +180,28 @@ export function GameShell() {
 
   const topScores = useTopScores();
   const submitScore = useSubmitScore();
+
+  // ---- conta Google (obrigatória para entrar no placar global) -----------
+  const sessao = authClient.useSession();
+  const usuario = sessao.data?.user ?? null;
+  const entrarGoogle = useCallback(() => {
+    void authClient.managedAuth.signIn({ provider: "google" });
+  }, []);
+  const sairGoogle = useCallback(() => {
+    void authClient.signOut().then(() => sessao.refetch());
+  }, [sessao]);
+  const conta = {
+    logada: !!usuario,
+    carregando: sessao.isPending,
+    nome: usuario?.name || usuario?.email || null,
+    avatar: usuario?.image ?? null,
+    id: usuario?.id ?? null,
+    entrar: entrarGoogle,
+    sair: sairGoogle,
+  };
+  const logadoRef = useRef(!!usuario);
+  logadoRef.current = !!usuario;
+
   const nameRef = useRef(playerName);
   nameRef.current = playerName;
   const submitRef = useRef(submitScore);
@@ -262,13 +286,15 @@ export function GameShell() {
         return next;
       });
 
-      // envio automático para o ranking com o apelido salvo
-      const player = nameRef.current.trim();
-      if (!player) return;
+      // só vai para o placar global quem está logada com a conta Google:
+      // o servidor amarra o recorde ao id da conta, então ninguém usa o nome de outra
+      if (!logadoRef.current) {
+        setSubmitState("deslogado");
+        return;
+      }
       setSubmitState("sending");
       submitRef.current.mutate(
         {
-          player,
           score: payload.score,
           distance: payload.distance,
           coins: payload.coins,
@@ -676,6 +702,7 @@ export function GameShell() {
             best={best}
             coins={coins}
             playerName={playerName}
+            conta={conta}
             muted={settings.muted}
             onToggleMute={toggleMute}
             onPlay={startGame}
@@ -707,6 +734,7 @@ export function GameShell() {
             loading={topScores.isLoading}
             localRuns={runs}
             me={playerName}
+            conta={conta}
             onClose={() => abrirPainel("none")}
           />
         </Frame>
@@ -795,14 +823,19 @@ export function GameShell() {
             onMover={(eixo, passo) => gameRef.current?.adminMover(eixo, passo)}
             onDesbloquearTudo={adminLiberarTudo}
             onResetProgresso={resetProgress}
-            onClose={() => abrirPainel("settings")}
+            // durante a partida o Fechar volta para a pausa; no menu volta às configurações
+            onClose={() => abrirPainel(phase === "paused" || phase === "running" ? "none" : "settings")}
           />
         </Frame>
       )}
 
       {phase === "paused" && panel === "none" && (
         <Frame>
-          <Paused onResume={() => gameRef.current?.resume()} onMenu={toMenu} />
+          <Paused
+            onResume={() => gameRef.current?.resume()}
+            onMenu={toMenu}
+            onAdmin={isAdmin ? () => abrirPainel("admin") : undefined}
+          />
         </Frame>
       )}
 
@@ -815,6 +848,7 @@ export function GameShell() {
             coinTotal={coins}
             playerName={playerName}
             submitState={submitState}
+            onEntrar={entrarGoogle}
             onRestart={startGame}
             onMenu={toMenu}
             onSkins={() => abrirPainel("skins")}

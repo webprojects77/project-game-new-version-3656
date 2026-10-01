@@ -207,6 +207,7 @@ export function Menu({
   best,
   coins,
   playerName,
+  conta,
   onPlay,
   onHowTo,
   onRanking,
@@ -222,6 +223,8 @@ export function Menu({
   best: number;
   coins: number;
   playerName: string;
+  /** conta Google usada no placar global */
+  conta: ContaOnline;
   onPlay: () => void;
   onHowTo: () => void;
   onRanking: () => void;
@@ -268,6 +271,19 @@ export function Menu({
         <button type="button" onClick={onChangeName} className="text-white/50 underline">
           trocar apelido
         </button>
+      </div>
+      {/* estado da conta online: sem ela o recorde não vai para o placar global */}
+      <div className="mt-2 flex items-center justify-center gap-2 text-xs">
+        {conta.logada ? (
+          <>
+            <Foto url={conta.avatar} nome={conta.nome ?? "?"} />
+            <span className="text-[var(--lrs-lime)]">Conta Google: {conta.nome}</span>
+          </>
+        ) : (
+          <button type="button" onClick={conta.entrar} className="text-white/55 underline">
+            Entrar com Google para aparecer no placar
+          </button>
+        )}
       </div>
       <div className="mt-5 flex flex-col gap-3">
         <button
@@ -413,6 +429,9 @@ export function Paused({
   );
 }
 
+/** Como terminou o envio da corrida para o placar global. */
+export type SubmitState = "sending" | "record" | "kept" | "error" | "deslogado";
+
 export function GameOver({
   result,
   best,
@@ -420,6 +439,7 @@ export function GameOver({
   coinTotal,
   playerName,
   submitState,
+  onEntrar,
   onRestart,
   onMenu,
   onSkins,
@@ -429,7 +449,9 @@ export function GameOver({
   isNewBest: boolean;
   coinTotal: number;
   playerName: string;
-  submitState: "sending" | "record" | "kept" | "error";
+  submitState: SubmitState;
+  /** abre o login do Google quando a corrida não pôde entrar no placar */
+  onEntrar: () => void;
   onRestart: () => void;
   onMenu: () => void;
   onSkins: () => void;
@@ -459,7 +481,9 @@ export function GameOver({
         ? `Novo recorde de ${playerName} no ranking!`
         : submitState === "kept"
           ? `Seu melhor recorde no ranking continua maior, ${playerName}.`
-          : "Não deu para enviar ao ranking (sem conexão?).";
+          : submitState === "deslogado"
+            ? "Entre com sua conta Google para esta corrida valer no placar global."
+            : "Não deu para enviar ao ranking (sem conexão?).";
   return (
     <div className="lrs-panel lrs-pop max-h-full w-full max-w-md overflow-y-auto rounded-3xl p-6 text-center">
       <h2 className="lrs-display text-4xl font-extrabold text-[var(--lrs-pink)]">Game Over</h2>
@@ -517,6 +541,7 @@ export function GameOver({
       </p>
 
       <div className="mt-4 flex flex-col gap-2">
+        {submitState === "deslogado" && <BotaoGoogle onClick={onEntrar} />}
         <button
           type="button"
           onClick={onRestart}
@@ -562,10 +587,117 @@ export interface GlobalRow {
   score: number;
   distance: number;
   skin?: string | null;
+  /** id da conta Google dona da linha */
+  playerKey?: string;
+  /** foto da conta Google */
+  avatar?: string | null;
+}
+
+/** Estado da conta Google usada para entrar no placar global. */
+export interface ContaOnline {
+  logada: boolean;
+  carregando: boolean;
+  nome: string | null;
+  avatar: string | null;
+  id: string | null;
+  entrar: () => void;
+  sair: () => void;
 }
 
 function skinName(key: string | null | undefined) {
   return SKINS.find((s) => s.key === key)?.name ?? "Luiza Clássica";
+}
+
+/** Foto da conta Google; sem foto, mostra a primeira letra do nome. */
+function Foto({ url, nome }: { url?: string | null; nome: string }) {
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt=""
+        referrerPolicy="no-referrer"
+        className="h-8 w-8 shrink-0 rounded-full border-2 border-[var(--lrs-ink)] object-cover"
+      />
+    );
+  }
+  return (
+    <span className="lrs-display flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-[var(--lrs-ink)] bg-[var(--lrs-surface2)] text-sm font-bold text-white/80">
+      {nome.trim().charAt(0).toUpperCase() || "?"}
+    </span>
+  );
+}
+
+/** Botão de login com a marca do Google. */
+export function BotaoGoogle({
+  onClick,
+  carregando,
+  texto = "Entrar com Google",
+}: {
+  onClick: () => void;
+  carregando?: boolean;
+  texto?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={carregando}
+      className="lrs-btn flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-3 text-base font-bold text-[#1f1f1f] disabled:opacity-60"
+    >
+      <svg viewBox="0 0 48 48" aria-hidden="true" className="h-5 w-5">
+        <path
+          fill="#EA4335"
+          d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.3 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.2 13.2 17.6 9.5 24 9.5z"
+        />
+        <path
+          fill="#4285F4"
+          d="M46.1 24.5c0-1.6-.1-2.8-.4-4.1H24v8.1h12.6c-.3 2.1-1.6 5.2-4.6 7.3l7.6 5.9c4.4-4.1 6.5-10.1 6.5-17.2z"
+        />
+        <path
+          fill="#FBBC05"
+          d="M10.4 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.8-6.1C1 16.5 0 20.1 0 24s1 7.5 2.6 10.8l7.8-6.1z"
+        />
+        <path
+          fill="#34A853"
+          d="M24 48c6.2 0 11.5-2 15.3-5.6l-7.6-5.9c-2 1.4-4.7 2.4-7.7 2.4-6.4 0-11.8-3.7-13.6-9.1l-7.8 6.1C6.5 42.6 14.6 48 24 48z"
+        />
+      </svg>
+      {carregando ? "Carregando..." : texto}
+    </button>
+  );
+}
+
+/** Cartão no topo do ranking global com o estado da conta Google. */
+function ContaBox({ conta }: { conta: ContaOnline }) {
+  if (conta.logada) {
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border-2 border-[var(--lrs-lime)]/50 bg-[rgba(163,230,53,0.1)] px-3 py-2">
+        <Foto url={conta.avatar} nome={conta.nome ?? "?"} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm text-white">{conta.nome}</div>
+          <div className="text-[10px] text-[var(--lrs-lime)]">
+            Conectada — seus recordes entram no placar
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={conta.sair}
+          className="lrs-btn rounded-xl bg-[var(--lrs-surface2)] px-3 py-1.5 text-xs text-white/80"
+        >
+          Sair
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-2xl border-2 border-[var(--lrs-ink)] bg-black/25 p-3">
+      <p className="mb-2 text-xs text-white/70">
+        O placar global é só para contas Google. Entre para salvar seus recordes online — o progresso
+        deste aparelho continua salvo do mesmo jeito.
+      </p>
+      <BotaoGoogle onClick={conta.entrar} carregando={conta.carregando} />
+    </div>
+  );
 }
 
 /** Ilustração simples para quando ainda não existe nenhum recorde. */
@@ -595,12 +727,15 @@ export function Ranking({
   loading,
   localRuns,
   me,
+  conta,
   onClose,
 }: {
   rows: GlobalRow[] | undefined;
   loading: boolean;
   localRuns: LocalRun[];
   me: string;
+  /** conta Google: sem ela o resultado não entra no placar global */
+  conta: ContaOnline;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"local" | "global">("global");
@@ -628,13 +763,17 @@ export function Ranking({
 
       {tab === "global" ? (
         <div className="mt-4 space-y-1.5">
-          <p className="text-xs text-white/55">Melhor recorde de cada jogador</p>
+          <ContaBox conta={conta} />
+          <p className="pt-1 text-xs text-white/55">Melhor recorde de cada conta Google</p>
           {loading && <div className="text-sm text-white/60">Carregando...</div>}
           {!loading && (!rows || rows.length === 0) && (
             <RankingVazio texto="Ninguém no ranking ainda. Seja a primeira a subir no pódio!" />
           )}
           {rows?.map((row, i) => {
-            const isMe = row.player.trim().toLowerCase() === mine;
+            // a linha é minha quando o id da conta bate; sem login, cai no apelido
+            const isMe = conta.id
+              ? row.playerKey === conta.id
+              : row.player.trim().toLowerCase() === mine;
             return (
               <div
                 key={row.id}
@@ -645,6 +784,7 @@ export function Ranking({
                 }`}
               >
                 <span className="lrs-display w-6 text-lg font-bold text-[var(--lrs-cyan)]">{i + 1}</span>
+                <Foto url={row.avatar} nome={row.player} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm text-white">{row.player}</div>
                   <div className="truncate text-[10px] text-white/45">{skinName(row.skin)}</div>
