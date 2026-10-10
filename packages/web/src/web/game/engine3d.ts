@@ -2,19 +2,28 @@
  * Luiza Run Surfs — motor 3D (three.js).
  *
  * Mundo em 3 faixas, câmera atrás e acima da Luiza (estilo Subway Surfers).
- * A pista, o cenário e os obstáculos são geometria 3D de verdade; a Luiza, o
- * policial e os itens são billboards (planos que sempre encaram a câmera) com
- * as fotos/placeholders dos "slots" de arte.
+ * Personagens e itens são malhas 3D; obstáculos e cenário combinam geometria
+ * em código com modelos GLB. Sorteios da pista são isolados dos efeitos visuais.
  */
 import * as THREE from "three";
 import { GameAudio } from "./audio";
 import { type CharPose, Dog, Humanoid, makeCop } from "./characters";
 import { animateItem, disposeItem, type ItemKind, makeItemMesh } from "./items";
-import { carregarModelos, makeModelo, type ModeloKey } from "./models";
+import { carregarModelos } from "./models";
 import { PALETTE } from "./palette";
 import { animatePower, makePowerMesh, POWERS, type PowerKind, sortearPower } from "./powerups";
 import { DEFAULT_SKIN, findSkin, type SkinKey } from "./skins";
 import { makeBuildingTexture, makeRoadTexture, makeSkyTexture } from "./textures";
+import { novaSeed, Sorteio } from "./random";
+import { PlanejadorPista, SPAWN, type ObstacleType } from "./spawn";
+import { bateNoObstaculo, COLISAO } from "./collision-rules";
+import { BIOMES } from "./biomes";
+import { construirObstaculo, modeloDoObstaculo } from "./obstacle-meshes";
+import { construirProp } from "./props";
+import { pick, rand } from "./visual-random";
+
+export type { ObstacleType } from "./spawn";
+export { BIOMES } from "./biomes";
 
 export type Phase = "menu" | "running" | "paused" | "caught" | "over";
 export type InputAction = "left" | "right" | "jump" | "slide";
@@ -45,6 +54,7 @@ export interface AdminFlags {
 
 /** Números do overlay de debug da conta admin. */
 export interface DebugInfo {
+  seed: number;
   fps: number;
   x: number;
   y: number;
@@ -144,127 +154,11 @@ const COMBO_MAX = 8;
 /** Duração do power-up de velocidade, em ms. */
 const BOOST_MS = 5000;
 
-interface Biome {
-  name: string;
-  hint: string;
-  /** gradiente do céu, do topo até o horizonte */
-  sky: [string, string, string, string, string];
-  fog: string;
-  hemiSky: string;
-  hemiGround: string;
-  sun: string;
-  rim: string;
-  walk: string;
-  neon: string;
-  /** cor dos volumes laterais (casas, muros, prédios, árvores) */
-  side: string[];
-  /** faixa de altura dos volumes laterais */
-  sideH: [number, number];
-  obstacle: { low: string; high: string; block: string; accent: string };
-}
-
-/** As 4 fases do GDD: bairro → escola → centro → praça, com hora do dia diferente. */
-export const BIOMES: Biome[] = [
-  {
-    name: "BAIRRO DA LUIZA",
-    hint: "Casas, cercas e carros — manhã",
-    sky: ["#123A6B", "#2E6FA8", "#7FB6D8", "#FFC48A", "#FFE9B0"],
-    fog: "#8FC0DE",
-    hemiSky: "#DDF1FF",
-    hemiGround: "#4A3A2A",
-    sun: "#FFF0CE",
-    rim: "#6FD0FF",
-    walk: "#8C7A63",
-    neon: "#FFD23F",
-    side: ["#F2A6C0", "#F9D77E", "#9BE0C0", "#FFB68A", "#C7B4F0"],
-    sideH: [4, 8],
-    obstacle: { low: "#B3651F", high: "#2FA8A0", block: "#8E5AB8", accent: "#FFF3D6" },
-  },
-  {
-    name: "ESCOLA",
-    hint: "Muros, quadras e placas — meio-dia",
-    sky: ["#1E5FA8", "#4C93D6", "#9FD3F0", "#F5F0C8", "#FFFDF0"],
-    fog: "#BEDCEC",
-    hemiSky: "#FFFFFF",
-    hemiGround: "#3C4A3A",
-    sun: "#FFFFFF",
-    rim: "#9BFF3D",
-    walk: "#A3A08F",
-    neon: "#22E1FF",
-    side: ["#E8E2CE", "#CFE3F2", "#F0C9A8", "#BFD8B0"],
-    sideH: [5, 10],
-    obstacle: { low: "#2F6FB3", high: "#E04E7A", block: "#D8C36A", accent: "#FFFFFF" },
-  },
-  {
-    name: "CENTRO",
-    hint: "Prédios, semáforos e ônibus — fim de tarde",
-    sky: ["#170B2B", "#4B1B63", "#B3277A", "#FF6B3D", "#FFD23F"],
-    fog: "#7A3A6E",
-    hemiSky: "#FFD9F2",
-    hemiGround: "#2A1040",
-    sun: "#FFE6C9",
-    rim: "#22E1FF",
-    walk: "#3B2260",
-    neon: "#FF2E88",
-    side: ["#5A3A8C", "#3E5AA8", "#8C3A6B", "#2F4A7A"],
-    sideH: [12, 28],
-    obstacle: { low: "#FF7A1F", high: "#22E1FF", block: "#6C4BD8", accent: "#FFD23F" },
-  },
-  {
-    name: "PRAÇA",
-    hint: "Árvores, bancos e lago — noite",
-    sky: ["#07071C", "#141446", "#2A2A6B", "#4A3A7A", "#7A5AA8"],
-    fog: "#2A2A5C",
-    hemiSky: "#9FB8FF",
-    hemiGround: "#101828",
-    sun: "#CFE0FF",
-    rim: "#9BFF3D",
-    walk: "#2A3A34",
-    neon: "#9BFF3D",
-    side: ["#1E5A3A", "#2A7A4A", "#174A32", "#2F6B44"],
-    sideH: [6, 12],
-    obstacle: { low: "#7A4A28", high: "#3AC98A", block: "#2A6B8C", accent: "#E8FFD6" },
-  },
-  {
-    // Área 5: sol forte, areia bege, mar turquesa e guarda-sóis listrados.
-    name: "PRAIA",
-    hint: "Areia, guarda-sóis e coqueiros — sol forte",
-    sky: ["#1B7FC4", "#3FA9E0", "#8FD8F2", "#D8F2F7", "#FFF6DC"],
-    fog: "#BFE9F2",
-    hemiSky: "#FFFFFF",
-    hemiGround: "#C9A96B",
-    sun: "#FFFBEA",
-    rim: "#2BD9C9",
-    walk: "#E8D2A0",
-    neon: "#2BD9C9",
-    side: ["#2BD9C9", "#E8D2A0", "#FF6B6B", "#FFD98A", "#7ED9B8"],
-    sideH: [3, 7],
-    obstacle: { low: "#FF6B6B", high: "#2BD9C9", block: "#B98A4A", accent: "#FFF6DC" },
-  },
-  {
-    // Área 6: luz artificial fria e uniforme, mármore polido e vitrines.
-    name: "SHOPPING",
-    hint: "Vitrines, mármore e escadas rolantes — luz fria",
-    sky: ["#DDE4EC", "#E8EDF3", "#F2F5F8", "#F7F9FB", "#FFFFFF"],
-    fog: "#E4E9F0",
-    hemiSky: "#FFFFFF",
-    hemiGround: "#B9BEC8",
-    sun: "#F4F7FF",
-    rim: "#CFA94A",
-    walk: "#E9E9EE",
-    neon: "#CFA94A",
-    side: ["#FFFFFF", "#E4E4EA", "#CFA94A", "#F2D8E4", "#D8E6F2"],
-    sideH: [7, 14],
-    obstacle: { low: "#C0392B", high: "#CFA94A", block: "#9AA3AE", accent: "#FFFFFF" },
-  },
-];
 
 /**
  * low = pular · high = deslizar · block = desviar de faixa
  * ride = escada rolante do shopping (sobe em cima pulando)
  */
-export type ObstacleType = "low" | "high" | "block" | "ride";
-
 interface Obstacle {
   type: ObstacleType;
   lane: number;
@@ -297,23 +191,6 @@ interface Item {
 interface Building {
   mesh: THREE.Mesh;
   side: -1 | 1;
-}
-
-function rand(min: number, max: number) {
-  return min + Math.random() * (max - min);
-}
-
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const out = [...arr];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
 }
 
 export class Game3D {
@@ -448,7 +325,10 @@ export class Game3D {
 
   // spawner
   private nextSpawn = 40;
-  private lastRow: { type: ObstacleType; lanes: number[] } | null = null;
+  private seed = novaSeed();
+  private planejador = new PlanejadorPista(this.seed);
+  private powerRng = new Sorteio(this.seed ^ 0xa5a5a5a5);
+  private ultimoPower: PowerKind | undefined;
   private obstacles: Obstacle[] = [];
   private items: Item[] = [];
   private pool: THREE.Object3D[] = [];
@@ -685,7 +565,11 @@ export class Game3D {
     this.camera.updateProjectionMatrix();
   }
 
-  start() {
+  start(seed = novaSeed()) {
+    this.seed = seed >>> 0;
+    this.planejador = new PlanejadorPista(this.seed);
+    this.powerRng = new Sorteio(this.seed ^ 0xa5a5a5a5);
+    this.ultimoPower = undefined;
     this.lane = 1;
     this.x = 0;
     this.y = 0;
@@ -713,7 +597,6 @@ export class Game3D {
     this.copTargetZ = 26;
     this.copSurge = 0; // começa longe: policial e cachorro só aparecem quando há dano
     this.nextSpawn = 46;
-    this.lastRow = null;
     this.dogZ = 28;
     this.barkTimer = 2.5;
     // power-ups zerados
@@ -722,8 +605,8 @@ export class Game3D {
     this.chance = false;
     this.usedDoubleJump = false;
     this.shieldMesh.visible = false;
-    this.nextPower = rand(95, 140);
-    this.heartCooldown = 1200;
+    this.nextPower = this.powerRng.entre(SPAWN.powerIntervaloMinimo, SPAWN.powerIntervaloMaximo);
+    this.heartCooldown = SPAWN.coracaoIntervaloMetros;
     this.specialSpawned = false;
     // contagem regressiva antes de começar a valer
     this.countdown = 3.2;
@@ -956,7 +839,8 @@ export class Game3D {
     this.audio.setMusicRate(0.95 + (effSpeed / SPEED_MAX) * 0.28);
 
     // power-ups com duração vão descontando; avisa quando acaba
-    for (const [key, ms] of [...this.powerTimers]) {
+    // Map tolera delete/set da própria chave durante a iteração.
+    for (const [key, ms] of this.powerTimers) {
       const restante = ms - dt * 1000;
       if (restante <= 0) {
         this.powerTimers.delete(key);
@@ -1064,15 +948,19 @@ export class Game3D {
       this.buzz(40);
     }
 
-    // power-up universal: 1 a cada 30-45 segundos de corrida
-    this.nextPower -= dt;
-    if (this.nextPower <= 0) {
-      this.nextPower = rand(95, 140);
-      this.spawnPower();
-    }
-
     this.scroll(travelled);
     this.spawn(travelled, effSpeed);
+
+    // Só depois dos obstáculos: escolhe uma faixa realmente livre na linha.
+    // Power-up universal: intervalos de 95–140 segundos de corrida.
+    this.nextPower -= dt;
+    if (this.nextPower <= 0) {
+      // Sem faixa livre agora: tenta de novo logo, em vez de perder o intervalo inteiro.
+      this.nextPower = this.spawnPower()
+        ? this.powerRng.entre(SPAWN.powerIntervaloMinimo, SPAWN.powerIntervaloMaximo)
+        : SPAWN.powerNovaTentativa;
+    }
+
     this.collisions();
 
     this.hudTimer += dt;
@@ -1142,85 +1030,27 @@ export class Game3D {
     this.nextSpawn -= travelled;
     if (this.nextSpawn > 0) return;
 
-    const difficulty = Math.min(1, this.distance / 2600);
+    const linha = this.planejador.proxima({
+      distance: this.distance,
+      biome: this.biomeIdx,
+      speed: effSpeed,
+      lives: this.lives,
+      heartCooldown: this.heartCooldown,
+      specialSpawned: this.specialSpawned,
+    });
+    for (const lane of linha.lanes) this.addObstacle(linha.type, lane, SPAWN_Z);
 
-    // tipo da linha; evita pedir pulo logo depois de agachar sem espaço
-    const types: ObstacleType[] =
-      this.biomeIdx === 5
-        ? ["low", "high", "block", "ride", "ride", "low"] // shopping tem escada rolante
-        : ["low", "high", "block", "low", "block", "ride"];
-    let type = pick(types);
-    if (this.lastRow && this.lastRow.type === "high" && type === "low" && difficulty < 0.5) type = "block";
-
-    // quantas faixas ficam bloqueadas (nunca as 3)
-    const blocked = Math.random() < 0.2 + difficulty * 0.4 ? 2 : 1;
-    const order = shuffle([0, 1, 2]);
-    const lanes = order.slice(0, blocked);
-
-    for (const lane of lanes) this.addObstacle(type, lane, SPAWN_Z);
-
-    // itens nas faixas livres
-    const free = [0, 1, 2].filter((l) => !lanes.includes(l));
-    if (free.length) {
-      const lane = pick(free);
-      const roll = Math.random();
-      if (roll < 0.74) {
-        const n = 3 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < n; i++) this.addItem("coin", lane, SPAWN_Z - i * 3.2, 1.15);
-      } else if (roll < 0.765 && this.lives < 3 && this.heartCooldown <= 0) {
-        // coração é item raro: no máximo um a cada ~1,2 km e só com vida faltando
-        this.heartCooldown = 1200;
-        this.addItem("heart", lane, SPAWN_Z, 1.35);
-      } else if (roll < 0.785) {
-        this.addItem("boost", lane, SPAWN_Z, 1.35);
-      } else if (!this.specialSpawned && this.distance > 700) {
-        // item especial: no máximo 1 por partida
-        this.specialSpawned = true;
-        this.addItem("special", lane, SPAWN_Z, 1.4);
-      } else {
-        const n = 3 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < n; i++) this.addItem("coin", lane, SPAWN_Z - i * 3.2, 1.15);
+    if (linha.item === "coin") {
+      for (let i = 0; i < linha.moedas; i++) {
+        this.addItem("coin", linha.livre, SPAWN_Z - i * SPAWN.moedaEspaco, SPAWN.moedaAltura);
       }
+    } else {
+      if (linha.item === "heart") this.heartCooldown = SPAWN.coracaoIntervaloMetros;
+      if (linha.item === "special") this.specialSpawned = true;
+      this.addItem(linha.item, linha.livre, SPAWN_Z,
+        linha.item === "special" ? SPAWN.especialAltura : SPAWN.itemAltura);
     }
-
-    // ESPAÇO: sempre em tempo de reação, não em distância fixa.
-    // quanto mais rápido, maior o vão — nunca fica impossível.
-    const reaction = type === "block" ? 0.62 : 0.78;
-    const recovery = this.lastRow && this.lastRow.type !== type ? 0.34 : 0.16;
-    const jitter = rand(0, 0.22);
-    this.nextSpawn = Math.max(13, effSpeed * (reaction + recovery + jitter));
-
-    this.lastRow = { type, lanes };
-  }
-
-  /**
-   * Qual peça modelada em 3D entra em cada área. Devolve `undefined` quando a
-   * área usa um obstáculo desenhado em código (praia e shopping têm os seus).
-   */
-  private modeloDoObstaculo(type: ObstacleType): ModeloKey | undefined {
-    if (type === "low" || type === "ride") {
-      // pular: cerca de madeira no bairro/praça, barricada na escola, cone no centro
-      return ([
-        "cercaMadeira",
-        "cerquinha",
-        "cone",
-        "cercaMadeira",
-        undefined,
-        undefined,
-      ] as (ModeloKey | undefined)[])[this.biomeIdx];
-    }
-    if (type === "block") {
-      // desviar: carro na rua, caixas no pátio da escola, ônibus da linha azul no centro
-      return ([
-        "carro",
-        "caixas",
-        "onibus",
-        undefined,
-        undefined,
-        undefined,
-      ] as (ModeloKey | undefined)[])[this.biomeIdx];
-    }
-    return undefined;
+    this.nextSpawn = linha.distanciaProxima;
   }
 
   /**
@@ -1230,7 +1060,7 @@ export class Game3D {
   private metaDoObstaculo(type: ObstacleType): { topo: number; rampa: boolean; trem: boolean } {
     if (type === "ride") return { topo: 1.15, rampa: true, trem: false };
     if (type === "block") {
-      const modelo = this.modeloDoObstaculo(type);
+      const modelo = modeloDoObstaculo(type, this.biomeIdx);
       // ônibus: dá para passar por cima com o duplo pulo ou saindo de uma rampa
       if (modelo === "onibus") return { topo: ONIBUS_TOP, rampa: false, trem: true };
       // carro: não dá para pular, e enquanto ele está do lado a faixa fica travada
@@ -1241,521 +1071,16 @@ export class Game3D {
   }
 
   private addObstacle(type: ObstacleType, lane: number, z: number) {
-    const group = this.buildObstacle(type);
+    const group = construirObstaculo(type, this.biomeIdx);
     group.position.set(LANES[lane], 0, z);
     this.scene.add(group);
     const meta = this.metaDoObstaculo(type);
     this.obstacles.push({ type, lane, z, group, hit: false, ...meta });
   }
 
-  /**
-   * Obstáculos são geometria low poly de verdade (sem foto), com forma e cor
-   * variando por bioma: cerca/muro/placa no bairro, ônibus e semáforo no
-   * centro, banco e arbusto na praça...
-   */
-  private buildObstacle(type: ObstacleType): THREE.Object3D {
-    const b = BIOMES[this.biomeIdx];
-    const group = new THREE.Group();
-    const mat = (color: string, emissive = 0) =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(color),
-        roughness: 0.75,
-        metalness: 0.05,
-        emissive: new THREE.Color(color),
-        emissiveIntensity: emissive,
-      });
-
-    // --- obstáculos exclusivos da PRAIA (área 5) -------------------------
-    if (this.biomeIdx === 4 && type === "high") {
-      // guarda-sol aberto: passa deslizando por baixo
-      const poste = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.9, 8), mat("#B98A4A"));
-      poste.position.y = 1.45;
-      group.add(poste);
-      for (let i = 0; i < 8; i++) {
-        const gomo = new THREE.Mesh(
-          new THREE.ConeGeometry(1.5, 0.7, 3),
-          mat(i % 2 === 0 ? "#FF6B6B" : b.obstacle.accent, 0.2),
-        );
-        gomo.position.y = 2.75;
-        gomo.rotation.y = (i / 8) * Math.PI * 2;
-        gomo.scale.set(0.42, 1, 0.42);
-        group.add(gomo);
-      }
-      const cupula = new THREE.Mesh(new THREE.ConeGeometry(1.55, 0.75, 8), mat("#2BD9C9", 0.25));
-      cupula.position.y = 2.72;
-      group.add(cupula);
-      return group;
-    }
-    if (this.biomeIdx === 4 && type === "low") {
-      // cadeira de praia: pular por cima
-      const assento = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 0.9), mat("#FF6B6B"));
-      assento.position.y = 0.6;
-      group.add(assento);
-      const costas = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 0.14), mat(b.obstacle.accent, 0.15));
-      costas.position.set(0, 1.0, -0.42);
-      costas.rotation.x = -0.35;
-      group.add(costas);
-      for (const sx of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          const pe = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.6, 0.12), mat("#B98A4A"));
-          pe.position.set(sx * 0.72, 0.3, sz * 0.36);
-          group.add(pe);
-        }
-      }
-      return group;
-    }
-
-    // --- obstáculos exclusivos do SHOPPING (área 6) ----------------------
-    if (this.biomeIdx === 5 && type === "ride") {
-      // escada rolante: dá para subir em cima pulando
-      const rampa = new THREE.Mesh(new THREE.BoxGeometry(2, 0.3, 3.2), mat("#9AA3AE"));
-      rampa.position.set(0, 0.95, 0);
-      rampa.rotation.x = 0.22;
-      group.add(rampa);
-      for (let i = 0; i < 6; i++) {
-        const degrau = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.12, 0.4), mat("#CFA94A", 0.3));
-        degrau.position.set(0, 0.55 + i * 0.14, 1.4 - i * 0.55);
-        group.add(degrau);
-      }
-      for (const sx of [-1, 1]) {
-        const corrimao = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 3.3), mat("#FFFFFF", 0.2));
-        corrimao.position.set(sx * 0.95, 1.45, 0);
-        corrimao.rotation.x = 0.22;
-        group.add(corrimao);
-      }
-      return group;
-    }
-    if (this.biomeIdx === 5 && type === "low") {
-      // carrinho de compras largado no meio do corredor
-      const cesta = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.7, 0.9), mat("#C0392B"));
-      cesta.position.y = 0.75;
-      group.add(cesta);
-      for (let i = 0; i < 4; i++) {
-        const grade = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.06, 0.95), mat("#FFFFFF", 0.2));
-        grade.position.y = 0.5 + i * 0.2;
-        group.add(grade);
-      }
-      const cabo = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), mat("#9AA3AE"));
-      cabo.position.set(0, 1.2, 0.45);
-      group.add(cabo);
-      for (const sx of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          const roda = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.08, 8), mat(PALETTE.ink));
-          roda.rotation.z = Math.PI / 2;
-          roda.position.set(sx * 0.6, 0.13, sz * 0.34);
-          group.add(roda);
-        }
-      }
-      return group;
-    }
-
-    if (type === "ride") {
-      // rampa turbo: dá para pular em cima dela (modelo .glb)
-      const rampa = makeModelo("rampa");
-      if (rampa) {
-        group.add(rampa);
-        return group;
-      }
-    }
-
-    if (type === "ride" || type === "low") {
-      // baixo: pular. Cada área tem a sua peça modelada em 3D.
-      const modelo = this.modeloDoObstaculo(type);
-      const peca = modelo ? makeModelo(modelo) : null;
-      if (peca) {
-        group.add(peca);
-        // uma leve variação de ângulo para não parecer tudo igual
-        peca.rotation.y += rand(-0.06, 0.06);
-        return group;
-      }
-
-      // reserva: se o modelo ainda não carregou, usamos a cerca desenhada em código
-      const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.55, 0.5), mat(b.obstacle.low));
-      body.position.y = 0.72;
-      group.add(body);
-      for (const sx of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.72, 0.35), mat(b.obstacle.low));
-        leg.position.set(sx * 0.72, 0.36, 0);
-        group.add(leg);
-      }
-      if (this.biomeIdx === 2) {
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.8, 6), mat(b.obstacle.accent, 0.25));
-        cone.position.set(0, 0.4, 0.5);
-        group.add(cone);
-      } else {
-        const stripe = new THREE.Mesh(new THREE.BoxGeometry(2, 0.12, 0.56), mat(b.obstacle.accent, 0.3));
-        stripe.position.y = 0.95;
-        group.add(stripe);
-      }
-    } else if (type === "high") {
-      // alto: deslizar. Varal (bairro), placa (escola), semáforo (centro), galho (praça)
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.85, 0.4), mat(b.obstacle.high, 0.35));
-      bar.position.y = 2.55;
-      group.add(bar);
-      const face = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 0.06), mat(b.obstacle.accent, 0.5));
-      face.position.set(0, 2.55, 0.24);
-      group.add(face);
-      for (const sx of [-1, 1]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.1, 0.18), mat(PALETTE.ink));
-        post.position.set(sx * 1.05, 1.55, 0);
-        group.add(post);
-      }
-      if (this.biomeIdx === 3) {
-        const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.62, 0), mat("#2A7A4A"));
-        leaf.position.set(0, 3.2, 0);
-        group.add(leaf);
-      }
-    } else {
-      // bloqueia a faixa: carro (bairro), caixas (escola), ônibus (centro)...
-      const modelo = this.modeloDoObstaculo(type);
-      const peca = modelo ? makeModelo(modelo) : null;
-      if (peca) {
-        group.add(peca);
-        peca.rotation.y += rand(-0.04, 0.04);
-        return group;
-      }
-      if (this.biomeIdx === 2) {
-        const bus = new THREE.Mesh(new THREE.BoxGeometry(2, 2.5, 1.5), mat(b.obstacle.block));
-        bus.position.y = 1.25;
-        group.add(bus);
-        for (let i = 0; i < 3; i++) {
-          const win = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.06), mat(b.obstacle.accent, 0.4));
-          win.position.set(-0.6 + i * 0.6, 1.85, 0.78);
-          group.add(win);
-        }
-      } else if (this.biomeIdx === 3) {
-        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1.25, 0), mat(b.obstacle.block));
-        rock.position.y = 1.05;
-        rock.rotation.set(0.3, 0.6, 0.2);
-        group.add(rock);
-      } else if (this.biomeIdx === 4) {
-        // jangada encostada na areia com castelo de areia na frente
-        const casco = new THREE.Mesh(new THREE.BoxGeometry(2, 0.4, 1.4), mat("#B98A4A"));
-        casco.position.y = 0.3;
-        group.add(casco);
-        const mastro = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.4, 6), mat("#8A6534"));
-        mastro.position.y = 1.4;
-        group.add(mastro);
-        const vela = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.5, 1.1), mat(b.obstacle.accent, 0.2));
-        vela.position.set(0.05, 1.5, 0.2);
-        group.add(vela);
-        for (let i = 0; i < 3; i++) {
-          const torre = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.5 + i * 0.15, 6), mat("#E8D2A0"));
-          torre.position.set(-0.6 + i * 0.6, 0.3 + i * 0.07, 0.9);
-          group.add(torre);
-        }
-      } else if (this.biomeIdx === 5) {
-        // vitrine de loja fechada bloqueando o corredor
-        const vidro = new THREE.Mesh(
-          new THREE.BoxGeometry(2, 2.7, 0.16),
-          new THREE.MeshStandardMaterial({
-            color: new THREE.Color("#D8E6F2"),
-            emissive: new THREE.Color("#FFFFFF"),
-            emissiveIntensity: 0.3,
-            transparent: true,
-            opacity: 0.72,
-            roughness: 0.05,
-            metalness: 0.4,
-          }),
-        );
-        vidro.position.y = 1.35;
-        group.add(vidro);
-        const moldura = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.18, 0.3), mat("#CFA94A", 0.3));
-        moldura.position.y = 2.78;
-        group.add(moldura);
-        for (const sx of [-1, 1]) {
-          const lateral = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.8, 0.3), mat("#CFA94A", 0.25));
-          lateral.position.set(sx, 1.4, 0);
-          group.add(lateral);
-        }
-        const roupa = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.1, 8), mat("#F2D8E4", 0.15));
-        roupa.position.set(0, 0.7, -0.2);
-        group.add(roupa);
-      } else {
-        const wall = new THREE.Mesh(new THREE.BoxGeometry(2, 2.7, 0.7), mat(b.obstacle.block));
-        wall.position.y = 1.35;
-        group.add(wall);
-        const top = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.22, 0.85), mat(b.obstacle.accent, 0.25));
-        top.position.y = 2.78;
-        group.add(top);
-      }
-    }
-    return group;
-  }
-
-  /**
-   * Props de cenário exclusivos de cada área (ficam nas calçadas, sem
-   * atrapalhar a corrida). São eles que dão a "cara" de cada fase.
-   */
-  private buildProp(): THREE.Object3D {
-    const group = new THREE.Group();
-    const mat = (color: string, emissive = 0) =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(color),
-        emissive: new THREE.Color(color),
-        emissiveIntensity: emissive,
-        roughness: 0.7,
-      });
-
-    // peças modeladas em 3D que ficam na calçada de algumas áreas
-    const modelado: (ModeloKey | undefined)[] = ["casinha", "cone", "placa", undefined, undefined, undefined];
-    const alvo = modelado[this.biomeIdx];
-    if (alvo && Math.random() < 0.6) {
-      const peca = makeModelo(alvo);
-      if (peca) {
-        group.add(peca);
-        // casa/placa/cone modelados ficam retos e rente à calçada
-        group.userData.alinhado = true;
-        return group;
-      }
-    }
-
-    switch (this.biomeIdx) {
-      case 0: {
-        if (Math.random() < 0.5) {
-          // trampolim do quintal
-          for (const sx of [-1, 1]) {
-            for (const sz of [-1, 1]) {
-              const pe = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.8, 0.14), mat("#9AA3AE"));
-              pe.position.set(sx * 1.1, 0.4, sz * 1.1);
-              group.add(pe);
-            }
-          }
-          const lona = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.35, 0.16, 12), mat("#2F6FB3"));
-          lona.position.y = 0.88;
-          group.add(lona);
-          const borda = new THREE.Mesh(new THREE.TorusGeometry(1.35, 0.12, 6, 14), mat(PALETTE.gold, 0.2));
-          borda.position.y = 0.96;
-          borda.rotation.x = Math.PI / 2;
-          group.add(borda);
-        } else {
-          // carrinho de rolimã
-          const tabua = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.12, 1.6), mat("#B3651F"));
-          tabua.position.y = 0.34;
-          group.add(tabua);
-          for (const sx of [-1, 1]) {
-            for (const sz of [-1, 1]) {
-              const roda = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.12, 10), mat(PALETTE.ink));
-              roda.rotation.z = Math.PI / 2;
-              roda.position.set(sx * 0.44, 0.2, sz * 0.6);
-              group.add(roda);
-            }
-          }
-        }
-        break;
-      }
-      case 1: {
-        if (Math.random() < 0.5) {
-          // fila de mochilas encostadas no muro
-          for (let i = 0; i < 4; i++) {
-            const cor = ["#E04E7A", "#2F6FB3", "#D8C36A", "#3AC98A"][i];
-            const mochila = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.62, 0.34), mat(cor));
-            mochila.position.set(0, 0.31, i * 0.7);
-            group.add(mochila);
-            const bolso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.24, 0.1), mat("#FFFFFF", 0.1));
-            bolso.position.set(0, 0.18, i * 0.7 + 0.2);
-            group.add(bolso);
-          }
-        } else {
-          // cones de educação física
-          for (let i = 0; i < 3; i++) {
-            const cone = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.7, 8), mat("#FF7A1F", 0.15));
-            cone.position.set(rand(-0.4, 0.4), 0.35, i * 1.1);
-            group.add(cone);
-            const base = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.06, 0.6), mat("#FFFFFF", 0.1));
-            base.position.set(cone.position.x, 0.03, i * 1.1);
-            group.add(base);
-          }
-        }
-        break;
-      }
-      case 2: {
-        if (Math.random() < 0.5) {
-          // banca de jornal virada
-          const corpo = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.4, 1.2), mat("#5A3A8C"));
-          corpo.position.set(0, 0.7, 0);
-          corpo.rotation.z = 0.42;
-          group.add(corpo);
-          const toldo = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.12, 1.4), mat(PALETTE.pink, 0.4));
-          toldo.position.set(0.3, 1.5, 0);
-          toldo.rotation.z = 0.42;
-          group.add(toldo);
-          for (let i = 0; i < 4; i++) {
-            const jornal = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.3), mat("#FFF3D6", 0.1));
-            jornal.position.set(rand(-1, 1), 0.03, rand(-0.8, 0.8));
-            jornal.rotation.y = rand(0, 3);
-            group.add(jornal);
-          }
-        } else {
-          // poste caído com a luz ainda piscando
-          const poste = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 6, 8), mat("#9AA3AE"));
-          poste.position.set(0, 0.6, 0);
-          poste.rotation.x = Math.PI / 2 - 0.12;
-          group.add(poste);
-          const luz = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.9), mat(PALETTE.gold, 0.9));
-          luz.position.set(0, 0.7, 2.9);
-          group.add(luz);
-        }
-        break;
-      }
-      case 3: {
-        if (Math.random() < 0.5) {
-          // playground: escorregador + balanço
-          const escada = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.2, 0.2), mat("#2A6B8C"));
-          escada.position.set(0, 1.1, -0.9);
-          group.add(escada);
-          const rampa = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.14, 2.8), mat(PALETTE.gold, 0.2));
-          rampa.position.set(0, 1.2, 0.7);
-          rampa.rotation.x = 0.5;
-          group.add(rampa);
-          const barra = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 2.6), mat("#3AC98A"));
-          barra.position.set(1.6, 2.1, 0);
-          group.add(barra);
-          const assento = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.3), mat("#E8FFD6", 0.15));
-          assento.position.set(1.6, 0.6, 0);
-          group.add(assento);
-        } else {
-          // lago com reflexo
-          const agua = new THREE.Mesh(
-            new THREE.CircleGeometry(2.6, 18),
-            new THREE.MeshStandardMaterial({
-              color: new THREE.Color("#2A6B8C"),
-              emissive: new THREE.Color("#22E1FF"),
-              emissiveIntensity: 0.35,
-              transparent: true,
-              opacity: 0.85,
-              roughness: 0.05,
-              metalness: 0.6,
-            }),
-          );
-          agua.rotation.x = -Math.PI / 2;
-          agua.position.y = 0.06;
-          group.add(agua);
-          for (let i = 0; i < 3; i++) {
-            const pedra = new THREE.Mesh(new THREE.DodecahedronGeometry(rand(0.25, 0.5), 0), mat("#4A5A54"));
-            pedra.position.set(rand(-2.4, 2.4), 0.2, rand(-2.4, 2.4));
-            group.add(pedra);
-          }
-        }
-        break;
-      }
-      case 4: {
-        const r = Math.random();
-        if (r < 0.4) {
-          // coqueiro de tronco curvo
-          for (let i = 0; i < 6; i++) {
-            const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.16 - i * 0.012, 0.2 - i * 0.012, 0.9, 7), mat("#8A6534"));
-            seg.position.set(Math.sin(i * 0.28) * 0.55, 0.45 + i * 0.85, 0);
-            seg.rotation.z = -Math.cos(i * 0.28) * 0.16;
-            group.add(seg);
-          }
-          for (let i = 0; i < 6; i++) {
-            const folha = new THREE.Mesh(new THREE.ConeGeometry(0.28, 2.1, 4), mat("#2BAF7A"));
-            folha.position.set(Math.sin(1.4) * 0.55, 5.5, 0);
-            folha.rotation.set(0.9, (i / 6) * Math.PI * 2, 0);
-            group.add(folha);
-          }
-          for (const sx of [-1, 1]) {
-            const coco = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), mat("#6B4A28"));
-            coco.position.set(Math.sin(1.4) * 0.55 + sx * 0.22, 5.2, 0);
-            group.add(coco);
-          }
-        } else if (r < 0.75) {
-          // guarda-sol listrado + cadeira na areia
-          const poste = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 8), mat("#B98A4A"));
-          poste.position.y = 1.3;
-          group.add(poste);
-          for (let i = 0; i < 8; i++) {
-            const gomo = new THREE.Mesh(
-              new THREE.ConeGeometry(1.5, 0.7, 3),
-              mat(i % 2 === 0 ? "#FF6B6B" : "#FFF6DC", 0.15),
-            );
-            gomo.position.y = 2.5;
-            gomo.rotation.y = (i / 8) * Math.PI * 2;
-            gomo.scale.set(0.42, 1, 0.42);
-            group.add(gomo);
-          }
-          const espreguicadeira = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.1, 1.7), mat("#2BD9C9"));
-          espreguicadeira.position.set(1.5, 0.4, 0);
-          group.add(espreguicadeira);
-        } else {
-          // quiosque de coco
-          const balcao = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.2, 1.4), mat("#E8D2A0"));
-          balcao.position.y = 0.6;
-          group.add(balcao);
-          const telhado = new THREE.Mesh(new THREE.ConeGeometry(2.2, 1.1, 4), mat("#8A6534"));
-          telhado.position.y = 1.9;
-          telhado.rotation.y = Math.PI / 4;
-          group.add(telhado);
-          const placa = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 0.08), mat("#FF6B6B", 0.35));
-          placa.position.set(0, 1.45, 0.75);
-          group.add(placa);
-          for (let i = 0; i < 4; i++) {
-            const coco = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), mat("#2BAF7A"));
-            coco.position.set(-0.9 + i * 0.6, 1.32, 0.4);
-            group.add(coco);
-          }
-        }
-        break;
-      }
-      default: {
-        const r = Math.random();
-        if (r < 0.4) {
-          // vitrine iluminada com manequim
-          const caixa = new THREE.Mesh(new THREE.BoxGeometry(3, 3.2, 1.2), mat("#FFFFFF"));
-          caixa.position.y = 1.6;
-          group.add(caixa);
-          const luz = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.18, 1.3), mat("#FFF6DC", 0.9));
-          luz.position.y = 3.2;
-          group.add(luz);
-          const manequim = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1, 4, 8), mat("#F2D8E4", 0.1));
-          manequim.position.set(0, 1.1, 0.8);
-          group.add(manequim);
-          const vestido = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.1, 8), mat(PALETTE.pink, 0.25));
-          vestido.position.set(0, 0.75, 0.8);
-          group.add(vestido);
-        } else if (r < 0.7) {
-          // planta em vaso + banco de mármore
-          const vaso = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.32, 0.7, 8), mat("#CFA94A", 0.2));
-          vaso.position.y = 0.35;
-          group.add(vaso);
-          for (let i = 0; i < 5; i++) {
-            const folha = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.1, 4), mat("#2BAF7A"));
-            folha.position.set(0, 1.1, 0);
-            folha.rotation.set(0.5, (i / 5) * Math.PI * 2, 0);
-            group.add(folha);
-          }
-          const banco = new THREE.Mesh(new THREE.BoxGeometry(2, 0.22, 0.7), mat("#E9E9EE"));
-          banco.position.set(1.8, 0.55, 0);
-          group.add(banco);
-          for (const sx of [-1, 1]) {
-            const pe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.55, 0.6), mat("#D8D8E0"));
-            pe.position.set(1.8 + sx * 0.7, 0.28, 0);
-            group.add(pe);
-          }
-        } else {
-          // painel de luz gigante
-          const painel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3.4, 2.2), mat("#D8E6F2", 0.5));
-          painel.position.y = 2.2;
-          group.add(painel);
-          for (let i = 0; i < 3; i++) {
-            const faixa = new THREE.Mesh(
-              new THREE.BoxGeometry(0.28, 0.5, 1.9),
-              mat([PALETTE.pink, PALETTE.cyan, PALETTE.gold][i], 0.85),
-            );
-            faixa.position.set(0, 1.4 + i * 0.9, 0);
-            group.add(faixa);
-          }
-        }
-        break;
-      }
-    }
-    return group;
-  }
-
   /** Coloca um prop na calçada, alternando os lados. */
   private spawnProp() {
-    const group = this.buildProp();
+    const group = construirProp(this.biomeIdx);
     const side = Math.random() < 0.5 ? -1 : 1;
     if (group.userData.alinhado) {
       // sem sorteio de posição: encostado na calçada e virado para a pista
@@ -1794,11 +1119,14 @@ export class Game3D {
   }
 
   /** Solta uma cápsula de power-up numa faixa livre. */
-  private spawnPower() {
-    const ocupadas = this.obstacles.filter((o) => o.z < SPAWN_Z + 24).map((o) => o.lane);
+  private spawnPower(): boolean {
+    const ocupadas = this.obstacles.filter((o) => o.z < SPAWN_Z + SPAWN.powerJanelaLivre).map((o) => o.lane);
     const livres = [0, 1, 2].filter((l) => !ocupadas.includes(l));
-    const lane = livres.length ? pick(livres) : 1;
-    const power = sortearPower();
+    // Não sacrifica a acessibilidade do item quando todas as faixas estão ocupadas.
+    if (!livres.length) return false;
+    const lane = this.powerRng.escolher(livres);
+    const power = sortearPower(this.powerRng.proximo, this.ultimoPower);
+    this.ultimoPower = power;
     const obj = makePowerMesh(power);
     obj.position.set(LANES[lane], 1.5, SPAWN_Z);
     this.scene.add(obj);
@@ -1813,6 +1141,7 @@ export class Game3D {
       fly: 0,
       x: LANES[lane],
     });
+    return true;
   }
 
   /** Aplica o efeito do power-up coletado. */
@@ -1857,7 +1186,7 @@ export class Game3D {
     for (const o of this.obstacles) {
       if (o.hit) continue;
       if (Math.abs(o.z) > 1.05) continue;
-      if (Math.abs(LANES[o.lane] - laneNow) > 1.1) continue;
+      if (Math.abs(LANES[o.lane] - laneNow) > COLISAO.faixaTolerancia) continue;
 
       // rampa e escada rolante funcionam como plataforma: em vez de bater,
       // a Luiza sobe nelas e é lançada ~2 blocos para cima (dá para passar por
@@ -1875,10 +1204,7 @@ export class Game3D {
         continue;
       }
 
-      let collides = false;
-      if (o.type === "low") collides = feet < 0.85;
-      else if (o.type === "high") collides = headTop > 1.6;
-      else collides = feet < o.topo;
+      const collides = bateNoObstaculo(o.type, feet, headTop, o.topo);
 
       if (collides) {
         o.hit = true;
@@ -1905,10 +1231,10 @@ export class Game3D {
 
     for (const it of this.items) {
       if (it.taken) continue;
-      if (Math.abs(it.z) > 1.3) continue;
-      if (Math.abs(it.x - laneNow) > 1.2) continue;
+      if (Math.abs(it.z) > COLISAO.itemProfundidade) continue;
+      if (Math.abs(it.x - laneNow) > COLISAO.itemFaixaTolerancia) continue;
       const dy = Math.abs(it.y - (this.y + (this.sliding > 0 ? 0.5 : 1)));
-      if (dy > 1.5) continue;
+      if (dy > COLISAO.itemAlturaTolerancia) continue;
       it.taken = true;
       it.fly = 0.42; // salta em direção à HUD antes de desaparecer
       this.collect(it);
@@ -2219,6 +1545,7 @@ export class Game3D {
   /** Números do overlay de debug (FPS, coordenadas, contagem de objetos). */
   getDebug(): DebugInfo {
     return {
+      seed: this.seed,
       fps: Math.round(this.fps),
       x: Number(this.x.toFixed(2)),
       y: Number(this.y.toFixed(2)),
@@ -2309,7 +1636,9 @@ export class Game3D {
   }
 
   private limparHitbox() {
-    for (const child of [...this.hitboxGroup.children]) {
+    // Remove de trás para frente: o array muda a cada remove().
+    for (let i = this.hitboxGroup.children.length - 1; i >= 0; i--) {
+      const child = this.hitboxGroup.children[i];
       this.hitboxGroup.remove(child);
       if (child instanceof THREE.Box3Helper) child.dispose?.();
     }

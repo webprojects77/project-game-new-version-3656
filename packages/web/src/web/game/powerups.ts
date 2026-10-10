@@ -2,7 +2,7 @@
  * Power-ups universais (tabela do documento de specs visuais).
  *
  * Cada power-up tem: ícone para a HUD, cor, duração e uma malha 3D low poly
- * que aparece flutuando na pista. Aparecem em média a cada 30-45 segundos.
+ * que aparece flutuando na pista. O motor usa intervalos de 95–140 segundos.
  */
 import * as THREE from "three";
 import { PALETTE } from "./palette";
@@ -65,7 +65,7 @@ export const POWERS: Record<PowerKind, PowerInfo> = {
     cor: PALETTE.orange,
     duracao: 5000,
     peso: 5,
-    descricao: "Dispara para frente atravessando tudo",
+    descricao: "Acelera e dobra pontos por distância, mas não protege de batida",
   },
   fuga: {
     key: "fuga",
@@ -98,15 +98,16 @@ export const POWERS: Record<PowerKind, PowerInfo> = {
 
 const ORDEM: PowerKind[] = ["iman", "escudo", "x2", "pulo", "turbo", "fuga", "fantasma", "chance"];
 
-/** Sorteia um power-up respeitando os pesos da tabela. */
-export function sortearPower(): PowerKind {
-  const total = ORDEM.reduce((s, k) => s + POWERS[k].peso, 0);
-  let r = Math.random() * total;
-  for (const k of ORDEM) {
+/** Sorteia por peso, sem repetir o anterior, usando a fonte da corrida. */
+export function sortearPower(rng: () => number = Math.random, anterior?: PowerKind): PowerKind {
+  const candidatos = ORDEM.filter((k) => k !== anterior);
+  const total = candidatos.reduce((s, k) => s + POWERS[k].peso, 0);
+  let r = rng() * total;
+  for (const k of candidatos) {
     r -= POWERS[k].peso;
     if (r <= 0) return k;
   }
-  return "iman";
+  return candidatos[candidatos.length - 1];
 }
 
 function mat(color: string, emissive = 0.7) {

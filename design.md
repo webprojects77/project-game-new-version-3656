@@ -1,12 +1,13 @@
-# Luiza Run Surfs — direção de design (v2, tudo 3D)
+# Luiza Run Surfs — direção de design (v3, 3D e contas)
 
 Endless runner 3D em 3 faixas, jogável no PC e no celular pelo navegador. Só plataforma web
 (Bun + Vite + React + Hono + Drizzle). Porta fixa em `__ports.cjs`.
 
 ## Regra número 1: nada de fotos
 
-O jogo é **100% modelado em 3D low poly**. Não existe foto, sprite, billboard nem imagem de
-personagem em nenhuma tela. Todo personagem (Luiza, policial, cachorro) é geometria three.js
+O jogo é **modelado em 3D low poly**, com modelos GLB otimizados para obstáculos e cenário.
+Não existem sprites ou billboards de personagens no mundo. Fotos de contas Google são permitidas
+somente na interface do placar e no indicador de login. Todo personagem (Luiza, policial, cachorro) é geometria three.js
 montada em código, e as miniaturas das skins na interface são SVG desenhado com as mesmas cores
 do boneco 3D.
 
@@ -55,8 +56,8 @@ com deslocamento de 6px ao apertar. Animações: `lrs-rise`, `lrs-pop`, `lrs-dro
 | Item | Efeito |
 | --- | --- |
 | 🪙 Moeda (cilindro dourado) | +10 pontos e +1 moeda para as skins |
-| 💚 Coração verde | recupera 1 vida (máx. 3) |
-| ⚡ Boost (raio laranja) | 5s invencível, velocidade e pontos em dobro |
+| 💚 Coração verde | recupera 1 vida (máx. 3); raro, intervalo de pelo menos 1.200 m entre spawns |
+| ⚡ Boost (raio laranja) | 5s com velocidade x1,5 e pontos por distância x2; não protege de colisões |
 | 📸 Item especial (moldura polaroid) | +100 pontos e libera a skin Polaroid |
 
 **Combo:** coletar sem parar sobe o multiplicador até **x8** (a cada 6 coletas), multiplicando
@@ -71,30 +72,68 @@ borda própria no seletor:
 | --- | --- | --- |
 | Luiza Clássica | Padrão (cinza) | grátis |
 | Luiza Esportiva | Comum (cinza) | 50.000 moedas |
+| Luiza de Praia | Comum (cinza) | 90.000 moedas |
 | Luiza Escolar | Rara (ciano) | 150.000 moedas + recorde 20.000 |
+| Luiza do Shopping | Rara (ciano) | 250.000 moedas + recorde 60.000 |
 | Luiza Neon | Épica (rosa) | 400.000 moedas + recorde 150.000 |
 | Luiza Polaroid | Especial (dourada) | 3 itens especiais (não se compra) |
+| Luiza Policial | Admin | conta administrativa local |
+| Luiza Cachorro | Admin | conta administrativa local |
 
 Card bloqueado aparece em silhueta `#4A4358` com cadeado e a lista de requisitos, marcando ✓ no
 que já foi cumprido.
 
 ## Telas
 
-- **Apelido** (primeira vez) → **Menu** com engrenagem de configurações, saldo de moedas e recorde.
+- **Conta local** → abas Criar conta e Entrar, apelido e senha. Contas anteriores ficam salvas
+  no mesmo aparelho; trocar de conta não apaga o progresso delas.
+- **Menu** com engrenagem de configurações, saldo, recorde e entrada Google independente da conta local.
 - **Personagens:** grade de 3 colunas no celular e 4–5 no PC, saldo no topo.
 - **Ranking:** abas **Neste aparelho** (últimas corridas locais com a skin usada) e **Global**
-  (melhor recorde por apelido, com a skin e destaque na linha do jogador).
-- **Configurações:** volume de música e de efeitos separados, mudo, botões na tela, sensibilidade
-  do swipe, vibração, reduzir efeitos e restaurar progresso (com confirmação).
+  (melhor recorde por conta Google, com nome, identificador público da linha, avatar e skin).
+  O destaque da própria linha depende da identidade autenticada, não de um apelido parecido.
+- **Configurações:** volume de música e efeitos separados; mudo anima os sliders a zero e os bloqueia;
+  organização dos botões (tamanho/altura/largura), vibração e reduzir efeitos.
+  Restaurar conta abre Entrar e não apaga dados. Zerar progresso é outra ação, com confirmação e senha.
+  Trocar apelido custa 20.000 moedas, de 4 a 8 letras/números sem espaços, uma vez por mês.
 - **Pausa** e **Game Over** (pontos, distância, moedas da corrida, combo máximo, especiais, novo
   saldo do cofrinho e status do envio ao ranking).
-- **Notificações:** cartão que desce do topo por ~2,5s para recorde, combo, item especial e troca
-  de fase.
+- **Notificações:** cartão que desce do topo por ~2,5s para recorde, combo e item especial;
+  não há aviso de troca de bioma.
 
 ## Fases
 
-O cenário troca a cada 750 m — Bairro (manhã) → Escola (meio-dia) → Centro (fim de tarde) → Praça
-(noite) — anunciado por um portal neon com faixa de pedestre gigante.
+O cenário troca a cada **2.200 m**: Bairro → Escola → Centro → Praça → Praia → Shopping.
+A velocidade inicial é 14 m/s e o teto é 48 m/s (antes do boost).
+Rampa/escada funcionam como plataformas; carro e ônibus ocupam uma faixa fixa; o ônibus pode
+ser superado com o duplo pulo ou impulso da rampa. Casas são alinhadas à calçada.
+
+### Geração da pista
+
+- `spawn.ts` planeja cada linha com RNG próprio (Mulberry32 com seed por partida).
+- Nunca bloqueia as três faixas; moedas, corações e especiais caem numa faixa livre.
+- No máximo 2 obstáculos do mesmo tipo e 2 padrões de faixas iguais seguidos.
+- Em dificuldade baixa, obstáculo alto não é seguido de um baixo (troca de ação rápida demais).
+- Power-ups usam outro RNG da mesma seed, só aparecem em faixa livre e não repetem o anterior.
+- Partículas e cenário usam `visual-random.ts` (`Math.random`), separados dos sorteios da pista.
+- Malhas ficam fora do motor: `biomes.ts`, `obstacle-meshes.ts`, `props.ts`; `engine3d.ts` cuida do loop.
+- O painel admin mostra a seed e reinicia com ela. A seed reproduz os sorteios para a mesma
+  sequência de distância, velocidade, vidas e cooldowns; não é replay completo da física nem anticheat.
+
+## Placar, segurança e testes
+
+- Só login Google permite enviar; o servidor deriva a identidade da sessão.
+- Nomes iguais recebem identificadores diferentes: `Luiza #1`, `Luiza #2`.
+- Validação básica confere pontuação versus distância, moedas e especiais, e recusa skins admin.
+  Isso não comprova uma corrida real: um atacante autenticado ainda pode fabricar valores coerentes.
+  Validação completa exige sessões de partida e replay verificado pelo servidor.
+- Corridas da conta administrativa ficam no histórico local, fora do placar competitivo.
+- A API bloqueia origens externas antes do CORS gerenciado, e Better Auth usa a mesma lista de origens.
+  Origens permitidas: URL cadastrada, origem efetiva do servidor e extras explícitos em `API_ALLOWED_ORIGINS`.
+- `bun run test` executa testes de placar, origens, contas, RNG com seed, regras de spawn, colisão e
+  sorteio de power-ups, sem WebGL e sem tocar no banco real. `bun run lint` passa sem violações.
+- Contas locais são conveniência do trabalho escolar: senhas e permissões admin no aparelho não
+  são uma barreira contra quem controla o navegador. Não confundir com a autenticação Google do servidor.
 
 ## Áudio
 

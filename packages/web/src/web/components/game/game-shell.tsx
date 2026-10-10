@@ -49,16 +49,38 @@ import {
 } from "./overlays";
 import { authClient } from "../../lib/auth";
 
-const BEST_KEY = "lrs.best";
-const NAME_KEY = "lrs.name";
-const COINS_KEY = "lrs.coins.total";
-const SPECIALS_KEY = "lrs.specials";
+import {
+  ADMIN_KEY,
+  ativarConta,
+  BEST_KEY,
+  COINS_KEY,
+  contaExiste,
+  guardarContaAtiva,
+  lerNumero,
+  NAME_AT_KEY,
+  NAME_KEY,
+  nomesDasContas,
+  novaConta,
+  renomearContaAtiva,
+  RUNS_KEY,
+  senhaDaConta,
+  SKIN_KEY,
+  SPECIALS_KEY,
+} from "../../game/contas";
+
 const SETTINGS_KEY = "lrs.settings";
-const SKIN_KEY = "lrs.skin";
-const RUNS_KEY = "lrs.local.runs";
-const PASS_KEY = "lrs.pass";
-const NAME_AT_KEY = "lrs.name.lastChange";
-const ADMIN_KEY = "lrs.admin";
+
+/** skin salva da conta ativa (cai na clássica se estiver vazia ou inválida) */
+function lerSkin(): SkinKey {
+  const saved = localStorage.getItem(SKIN_KEY) as SkinKey | null;
+  return saved && SKINS.some((s) => s.key === saved) ? saved : DEFAULT_SKIN;
+}
+
+/** quando o apelido foi trocado pela última vez (null = nunca / valor corrompido) */
+function lerTrocaNome(): number | null {
+  const n = lerNumero(NAME_AT_KEY, -1);
+  return n > 0 ? n : null;
+}
 
 /** Credenciais da conta admin (vêm da especificação do trabalho). */
 const ADMIN_NAME = "adm";
@@ -134,7 +156,8 @@ function loadSettings(): GameSettings {
 function loadRuns(): LocalRun[] {
   try {
     const raw = localStorage.getItem(RUNS_KEY);
-    return raw ? (JSON.parse(raw) as LocalRun[]) : [];
+    const lista = raw ? (JSON.parse(raw) as LocalRun[]) : [];
+    return Array.isArray(lista) ? lista : [];
   } catch {
     return [];
   }
@@ -149,28 +172,29 @@ export function GameShell() {
   const [hud, setHud] = useState<HudState>(EMPTY_HUD);
   const [result, setResult] = useState<GameOverPayload | null>(null);
   const [panel, setPanel] = useState<Panel>("none");
-  const [best, setBest] = useState(() => Number(localStorage.getItem(BEST_KEY) || 0));
+  const [best, setBest] = useState(() => lerNumero(BEST_KEY));
   const [isNewBest, setIsNewBest] = useState(false);
   const [playerName, setPlayerName] = useState(() => localStorage.getItem(NAME_KEY) || "");
   const [submitState, setSubmitState] = useState<SubmitState>("sending");
   const [floats, setFloats] = useState<FloatingText[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [coins, setCoins] = useState(() => Number(localStorage.getItem(COINS_KEY) || 0));
-  const [specials, setSpecials] = useState(() => Number(localStorage.getItem(SPECIALS_KEY) || 0));
+  const [coins, setCoins] = useState(() => lerNumero(COINS_KEY));
+  const [specials, setSpecials] = useState(() => lerNumero(SPECIALS_KEY));
   const [runs, setRuns] = useState<LocalRun[]>(loadRuns);
   const [settings, setSettings] = useState<GameSettings>(loadSettings);
-  const [skin, setSkin] = useState<SkinKey>(() => {
-    const saved = localStorage.getItem(SKIN_KEY) as SkinKey | null;
-    return saved && SKINS.some((s) => s.key === saved) ? saved : DEFAULT_SKIN;
-  });
+  const [skin, setSkin] = useState<SkinKey>(lerSkin);
   const [fatal, setFatal] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem(ADMIN_KEY) === "1");
+  const adminRef = useRef(isAdmin);
+  adminRef.current = isAdmin;
+  const corridaTesteRef = useRef(false);
   const [adminFlags, setAdminFlags] = useState<AdminFlags>(ADMIN_OFF);
   const [debug, setDebug] = useState<DebugInfo | null>(null);
-  const [nameChangedAt, setNameChangedAt] = useState<number | null>(() => {
-    const raw = localStorage.getItem(NAME_AT_KEY);
-    return raw ? Number(raw) : null;
-  });
+  const [nameChangedAt, setNameChangedAt] = useState<number | null>(lerTrocaNome);
+  /** a tela de conta abre direto em "Entrar" quando já existe conta salva */
+  const [modoConta, setModoConta] = useState<"criar" | "entrar">(() =>
+    nomesDasContas().length > 0 ? "entrar" : "criar",
+  );
   const [missoes] = useState(() => missoesDoDia());
   const [missionProgress, setMissionProgress] = useState<MissionProgress>(carregarProgresso);
   const missoesRef = useRef(missoes);
@@ -288,6 +312,11 @@ export function GameShell() {
 
       // só vai para o placar global quem está logada com a conta Google:
       // o servidor amarra o recorde ao id da conta, então ninguém usa o nome de outra
+      const visual = skinRef.current;
+      if (corridaTesteRef.current || visual === "policial" || visual === "cachorro") {
+        setSubmitState("teste");
+        return;
+      }
       if (!logadoRef.current) {
         setSubmitState("deslogado");
         return;
@@ -299,7 +328,7 @@ export function GameShell() {
           distance: payload.distance,
           coins: payload.coins,
           specials: payload.specials,
-          skin: skinRef.current,
+          skin: visual,
         },
         {
           onSuccess: (res) => setSubmitState(res.improved ? "record" : "kept"),
@@ -365,14 +394,18 @@ export function GameShell() {
 
   const input = useCallback((action: InputAction) => gameRef.current?.input(action), []);
 
-  const startGame = useCallback(() => {
+  const startComSeed = useCallback((seed?: number) => {
+    // Corridas administrativas são testes locais, nunca resultados competitivos.
+    corridaTesteRef.current = adminRef.current;
     setPanel("none");
     setResult(null);
     setIsNewBest(false);
     setFloats([]);
     setToasts([]);
-    gameRef.current?.start();
+    gameRef.current?.start(seed);
   }, []);
+  // Nunca repassa o evento do botão como seed.
+  const startGame = useCallback(() => startComSeed(), [startComSeed]);
 
   // ---- teclado ----------------------------------------------------------
   useEffect(() => {
@@ -439,10 +472,13 @@ export function GameShell() {
   // ---- overlay de debug: lê os números do motor 3x por segundo ----------
   useEffect(() => {
     if (!isAdmin || panel !== "admin") return;
-    const id = window.setInterval(() => {
+    const ler = () => {
       const g = gameRef.current;
       if (g) setDebug(g.getDebug());
-    }, 330);
+    };
+    // Lê na hora: sem isso o painel mostraria por um instante a seed da partida anterior.
+    ler();
+    const id = window.setInterval(ler, 330);
     return () => window.clearInterval(id);
   }, [isAdmin, panel]);
 
@@ -481,9 +517,30 @@ export function GameShell() {
     gameRef.current?.setSkin(next);
   }
 
+  /** Recarrega todos os estados a partir da conta ativa no localStorage. */
+  function recarregarConta() {
+    const nome = localStorage.getItem(NAME_KEY) || "";
+    const admin = localStorage.getItem(ADMIN_KEY) === "1";
+    const recorde = lerNumero(BEST_KEY);
+    const visual = lerSkin();
+    setPlayerName(nome);
+    setIsAdmin(admin);
+    if (!admin) setAdminFlags(ADMIN_OFF);
+    setBest(recorde);
+    setCoins(lerNumero(COINS_KEY));
+    setSpecials(lerNumero(SPECIALS_KEY));
+    setRuns(loadRuns());
+    setSkin(visual);
+    setNameChangedAt(lerTrocaNome());
+    setMissionProgress(carregarProgresso());
+    gameRef.current?.setBest(recorde);
+    gameRef.current?.setSkin(visual);
+  }
+
   /**
-   * Criação da conta (tela inicial): apelido + senha, com o caminho escondido
-   * da conta admin. Devolve null quando deu certo ou o texto do erro.
+   * Criar conta nova (aba "Criar conta"): apelido + senha, com o caminho
+   * escondido da conta admin (5 cliques + chave). A conta anterior não é
+   * apagada — ela fica salva e dá para voltar pela aba "Entrar".
    */
   function criarConta(nome: string, senha: string, chave: string): string | null {
     const admin = nome.toLowerCase() === ADMIN_NAME && chave === ADMIN_PASS;
@@ -500,15 +557,56 @@ export function GameShell() {
         return "Esse apelido é reservado.";
       }
     }
+    if (contaExiste(nome)) {
+      // admin que já existe: só entra nela, sem zerar nada
+      if (admin) return entrarConta(nome, ADMIN_PASS);
+      sfx("erro");
+      return "Essa conta já existe neste aparelho. Use a aba Entrar.";
+    }
 
     sfx(admin ? "desbloqueio" : "clique");
-    localStorage.setItem(NAME_KEY, nome);
-    localStorage.setItem(PASS_KEY, senha);
-    localStorage.setItem(ADMIN_KEY, admin ? "1" : "0");
-    setPlayerName(nome);
-    setIsAdmin(admin);
+    novaConta(admin ? ADMIN_NAME : nome, senha, admin);
+    recarregarConta();
     setPanel("none");
     if (admin) notify("power", "Conta admin liberada — painel nas configurações.");
+    return null;
+  }
+
+  /**
+   * Entrar numa conta já criada (aba "Entrar" / Restaurar conta): confere a
+   * senha e traz de volta moedas, recorde, skins e missões dela.
+   * Conta admin: apelido "adm" + senha "9764".
+   */
+  function entrarConta(nome: string, senha: string): string | null {
+    const limpo = nome.trim();
+    const adminLogin = limpo.toLowerCase() === ADMIN_NAME && senha === ADMIN_PASS;
+
+    if (!contaExiste(limpo)) {
+      if (adminLogin) {
+        // a admin sempre existe: se ainda não estava no aparelho, nasce agora
+        novaConta(ADMIN_NAME, ADMIN_PASS, true);
+      } else {
+        sfx("erro");
+        return "Não achei essa conta neste aparelho. Confira o apelido ou crie uma nova.";
+      }
+    } else {
+      const salva = senhaDaConta(limpo);
+      if (!adminLogin && salva !== null && salva !== senha) {
+        sfx("erro");
+        return "Senha incorreta.";
+      }
+      const ativa = (localStorage.getItem(NAME_KEY) || "").toLowerCase() === limpo.toLowerCase();
+      if (!ativa) ativarConta(limpo);
+      if (adminLogin) {
+        localStorage.setItem(ADMIN_KEY, "1");
+        guardarContaAtiva();
+      }
+    }
+
+    sfx(adminLogin ? "desbloqueio" : "clique");
+    recarregarConta();
+    setPanel("none");
+    notify("power", adminLogin ? "Conta admin — painel nas configurações." : `Bem-vinda de volta, ${limpo}!`);
     return null;
   }
 
@@ -517,8 +615,12 @@ export function GameShell() {
    * uma vez por mês. A conta admin passa direto.
    */
   function trocarNome(nome: string): string | null {
+    if (contaExiste(nome) && nome.toLowerCase() !== playerName.toLowerCase()) {
+      sfx("erro");
+      return "Já existe outra conta com esse apelido neste aparelho.";
+    }
     if (isAdmin) {
-      localStorage.setItem(NAME_KEY, nome);
+      renomearContaAtiva(playerName, nome);
       setPlayerName(nome);
       sfx("desbloqueio");
       return null;
@@ -546,8 +648,8 @@ export function GameShell() {
     const restante = coins - NOME_CUSTO;
     const agora = Date.now();
     localStorage.setItem(COINS_KEY, String(restante));
-    localStorage.setItem(NAME_KEY, nome);
     localStorage.setItem(NAME_AT_KEY, String(agora));
+    renomearContaAtiva(playerName, nome);
     setCoins(restante);
     setPlayerName(nome);
     setNameChangedAt(agora);
@@ -555,9 +657,21 @@ export function GameShell() {
     return null;
   }
 
-  /** Restaurar progresso: exige a senha da conta (ou nada, na admin). */
+  /** Abre a tela de conta já na aba Entrar (Restaurar conta / Trocar de conta). */
+  function abrirEntrar() {
+    guardarContaAtiva();
+    // a tela de conta só aparece no menu: se estiver numa partida, sai dela antes
+    if (phase !== "menu") {
+      setResult(null);
+      gameRef.current?.toMenu();
+    }
+    setModoConta("entrar");
+    abrirPainel("name");
+  }
+
+  /** Apagar progresso: exige a senha da conta. Mantém a conta, zera só o progresso. */
   function resetProgressComSenha(senha: string): string | null {
-    const salva = localStorage.getItem(PASS_KEY);
+    const salva = senhaDaConta(playerName);
     if (!isAdmin && salva && senha !== salva) {
       sfx("erro");
       return "Senha incorreta.";
@@ -580,6 +694,7 @@ export function GameShell() {
     setSkin(DEFAULT_SKIN);
     gameRef.current?.setSkin(DEFAULT_SKIN);
     gameRef.current?.setBest(0);
+    guardarContaAtiva();
   }
 
   // ---- poderes da conta admin -------------------------------------------
@@ -619,7 +734,7 @@ export function GameShell() {
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-[var(--lrs-bg)] select-none">
-      <canvas ref={canvasRef} className="block h-full w-full touch-none" />
+      <canvas ref={canvasRef} aria-label="Pista do jogo Luiza Run Surfs" className="block h-full w-full touch-none" />
 
       {/* textos flutuantes (+10, +100, vida...) */}
       <div className="pointer-events-none absolute inset-x-0 top-[38%] z-20 flex flex-col items-center gap-1">
@@ -689,8 +804,12 @@ export function GameShell() {
       {phase === "menu" && (needsName || panel === "name") && (
         <Frame>
           <NameGate
-            initial={playerName}
+            key={modoConta}
+            modoInicial={modoConta}
+            contas={nomesDasContas()}
+            contaAtiva={playerName}
             onConfirm={criarConta}
+            onEntrar={entrarConta}
             onCancel={needsName ? undefined : () => setPanel("none")}
           />
         </Frame>
@@ -709,7 +828,7 @@ export function GameShell() {
             onHowTo={() => abrirPainel("howto")}
             onSkins={() => abrirPainel("skins")}
             onSettings={() => abrirPainel("settings")}
-            onChangeName={() => abrirPainel("name")}
+            onChangeName={abrirEntrar}
             onMissions={() => abrirPainel("missions")}
             missionsDone={missionsDone}
             missionsTotal={missoes.length}
@@ -733,7 +852,6 @@ export function GameShell() {
             rows={topScores.data}
             loading={topScores.isLoading}
             localRuns={runs}
-            me={playerName}
             conta={conta}
             onClose={() => abrirPainel("none")}
           />
@@ -767,6 +885,7 @@ export function GameShell() {
             settings={settings}
             onChange={(next) => setSettings((s) => ({ ...s, ...next }))}
             onReset={resetProgressComSenha}
+            onRestaurar={abrirEntrar}
             playerName={playerName}
             coins={coins}
             admin={isAdmin}
@@ -823,6 +942,7 @@ export function GameShell() {
             onMover={(eixo, passo) => gameRef.current?.adminMover(eixo, passo)}
             onDesbloquearTudo={adminLiberarTudo}
             onResetProgresso={resetProgress}
+            onReiniciarSeed={startComSeed}
             // durante a partida o Fechar volta para a pausa; no menu volta às configurações
             onClose={() => abrirPainel(phase === "paused" || phase === "running" ? "none" : "settings")}
           />

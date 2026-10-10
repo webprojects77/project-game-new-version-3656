@@ -1,3 +1,5 @@
+// Precisa vir primeiro: conclui o retorno do login antes de o jogo montar.
+import "./lib/auth-redirect";
 import { Route, Switch } from "wouter";
 import Index from "./pages/index";
 import { Provider } from "./components/provider";

@@ -91,15 +91,24 @@ export function Frame({ children }: { children: React.ReactNode }) {
  * 3, que é o caminho da conta admin ("adm").
  */
 export function NameGate({
-  initial,
+  modoInicial = "criar",
+  contas = [],
+  contaAtiva = "",
   onConfirm,
+  onEntrar,
   onCancel,
 }: {
-  initial: string;
+  modoInicial?: "criar" | "entrar";
+  /** apelidos das contas já salvas neste aparelho */
+  contas?: string[];
+  contaAtiva?: string;
   onConfirm: (nome: string, senha: string, chave: string) => string | null;
+  /** entrar numa conta existente: devolve null se deu certo, ou o erro */
+  onEntrar: (nome: string, senha: string) => string | null;
   onCancel?: () => void;
 }) {
-  const [nome, setNome] = useState(initial);
+  const [modo, setModo] = useState<"criar" | "entrar">(modoInicial);
+  const [nome, setNome] = useState(modoInicial === "entrar" ? contaAtiva : "");
   const [senha, setSenha] = useState("");
   const [chave, setChave] = useState("");
   const [modoChave, setModoChave] = useState(false);
@@ -109,7 +118,22 @@ export function NameGate({
   const limpo = nome.trim();
   const minimo = modoChave ? 3 : NOME_MIN;
 
+  function trocarModo(m: "criar" | "entrar") {
+    setModo(m);
+    setErro(null);
+    setSenha("");
+    setCliques(0);
+    setModoChave(false);
+    setNome(m === "entrar" ? contaAtiva : "");
+  }
+
   function confirmar() {
+    if (modo === "entrar") {
+      if (!limpo) return setErro("Digite o apelido da conta.");
+      if (!senha) return setErro("Digite a senha da conta.");
+      setErro(onEntrar(limpo, senha));
+      return;
+    }
     // contador do atalho escondido: 5 cliques no Confirmar abrem a chave
     const n = cliques + 1;
     setCliques(n);
@@ -138,13 +162,56 @@ export function NameGate({
       }}
       className="lrs-panel lrs-pop w-full max-w-sm rounded-3xl p-6 text-center"
     >
-      <h2 className="lrs-display text-3xl font-extrabold text-[var(--lrs-cyan)]">Criar sua conta</h2>
+      <div className="grid grid-cols-2 gap-2">
+        {(["criar", "entrar"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => trocarModo(m)}
+            className={`lrs-btn rounded-xl py-2 text-sm ${
+              modo === m
+                ? "bg-[var(--lrs-cyan)] text-[var(--lrs-ink)]"
+                : "bg-[var(--lrs-surface2)] text-white/80"
+            }`}
+          >
+            {m === "criar" ? "Criar conta" : "Entrar"}
+          </button>
+        ))}
+      </div>
+
+      <h2 className="lrs-display mt-4 text-3xl font-extrabold text-[var(--lrs-cyan)]">
+        {modo === "criar" ? "Criar sua conta" : "Entrar na conta"}
+      </h2>
       <p className="mt-2 text-sm text-white/65">
-        O apelido vai para o ranking e a senha protege o seu progresso neste aparelho.
+        {modo === "criar"
+          ? "O apelido e a senha identificam seu progresso neste aparelho. O placar online usa sua conta Google."
+          : "Volte para uma conta que você já criou: moedas, recorde e skins voltam junto."}
       </p>
 
+      {modo === "entrar" && contas.length > 0 && (
+        <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+          {contas.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => {
+                setNome(c);
+                setErro(null);
+              }}
+              className={`lrs-btn rounded-full px-3 py-1 text-xs ${
+                c.toLowerCase() === limpo.toLowerCase()
+                  ? "bg-[var(--lrs-lime)] text-[var(--lrs-ink)]"
+                  : "bg-[var(--lrs-surface2)] text-white/80"
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
+
       <input
-        autoFocus
+        aria-label="Apelido"
         value={nome}
         maxLength={NOME_MAX}
         onChange={(e) => {
@@ -152,14 +219,17 @@ export function NameGate({
           setErro(null);
         }}
         placeholder="Apelido"
-        className="lrs-display mt-5 w-full rounded-2xl border-2 border-[var(--lrs-ink)] bg-black/30 px-4 py-3 text-center text-2xl text-white outline-none placeholder:text-white/30"
+        className="lrs-display mt-4 w-full rounded-2xl border-2 border-[var(--lrs-ink)] bg-black/30 px-4 py-3 text-center text-2xl text-white outline-none placeholder:text-white/30"
       />
-      <p className="mt-1 text-[11px] text-white/45">
-        Sem espaços, só letras e números, de {NOME_MIN} a {NOME_MAX} caracteres.
-      </p>
+      {modo === "criar" && (
+        <p className="mt-1 text-[11px] text-white/45">
+          Sem espaços, só letras e números, de {NOME_MIN} a {NOME_MAX} caracteres.
+        </p>
+      )}
 
       <input
         type="password"
+        aria-label="Senha"
         value={senha}
         maxLength={16}
         onChange={(e) => {
@@ -169,13 +239,14 @@ export function NameGate({
         placeholder="Senha"
         className="lrs-display mt-3 w-full rounded-2xl border-2 border-[var(--lrs-ink)] bg-black/30 px-4 py-3 text-center text-xl text-white outline-none placeholder:text-white/30"
       />
-      <p className="mt-1 text-[11px] text-white/45">
-        Guarde bem: ela é pedida para restaurar o progresso.
-      </p>
+      {modo === "criar" && (
+        <p className="mt-1 text-[11px] text-white/45">Guarde bem: ela é pedida para entrar de novo na conta.</p>
+      )}
 
-      {modoChave && (
+      {modo === "criar" && modoChave && (
         <input
           type="password"
+          aria-label="Chave de acesso"
           value={chave}
           maxLength={16}
           onChange={(e) => {
@@ -191,7 +262,7 @@ export function NameGate({
         type="submit"
         className="lrs-btn mt-4 w-full rounded-2xl bg-[var(--lrs-pink)] py-3 text-xl text-white"
       >
-        Confirmar
+        {modo === "criar" ? "Confirmar" : "Entrar"}
       </button>
       {erro && <p className="mt-2 text-[12px] text-[var(--lrs-gold)]">{erro}</p>}
       {onCancel && (
@@ -269,7 +340,7 @@ export function Menu({
       <div className="mt-4 text-sm text-white/75">
         Jogando como <strong className="text-[var(--lrs-lime)]">{playerName}</strong>{" "}
         <button type="button" onClick={onChangeName} className="text-white/50 underline">
-          trocar apelido
+          trocar de conta
         </button>
       </div>
       {/* estado da conta online: sem ela o recorde não vai para o placar global */}
@@ -430,7 +501,7 @@ export function Paused({
 }
 
 /** Como terminou o envio da corrida para o placar global. */
-export type SubmitState = "sending" | "record" | "kept" | "error" | "deslogado";
+export type SubmitState = "sending" | "record" | "kept" | "error" | "deslogado" | "teste";
 
 export function GameOver({
   result,
@@ -482,8 +553,10 @@ export function GameOver({
         : submitState === "kept"
           ? `Seu melhor recorde no ranking continua maior, ${playerName}.`
           : submitState === "deslogado"
-            ? "Entre com sua conta Google para esta corrida valer no placar global."
-            : "Não deu para enviar ao ranking (sem conexão?).";
+            ? "Entre com Google antes da próxima corrida para participar do placar global."
+            : submitState === "teste"
+              ? "Corrida administrativa: salva apenas neste aparelho, fora do placar global."
+              : "Resultado não enviado: confira a conexão ou as regras do placar.";
   return (
     <div className="lrs-panel lrs-pop max-h-full w-full max-w-md overflow-y-auto rounded-3xl p-6 text-center">
       <h2 className="lrs-display text-4xl font-extrabold text-[var(--lrs-pink)]">Game Over</h2>
@@ -584,6 +657,8 @@ export interface LocalRun {
 export interface GlobalRow {
   id: number;
   player: string;
+  /** Nome + identificador da linha: diferencia contas com nomes iguais. */
+  displayName?: string;
   score: number;
   distance: number;
   skin?: string | null;
@@ -726,20 +801,17 @@ export function Ranking({
   rows,
   loading,
   localRuns,
-  me,
   conta,
   onClose,
 }: {
   rows: GlobalRow[] | undefined;
   loading: boolean;
   localRuns: LocalRun[];
-  me: string;
   /** conta Google: sem ela o resultado não entra no placar global */
   conta: ContaOnline;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"local" | "global">("global");
-  const mine = me.trim().toLowerCase();
   return (
     <div className="lrs-panel lrs-rise max-h-full w-full max-w-md overflow-y-auto rounded-3xl p-6">
       <h2 className="lrs-display text-3xl font-extrabold text-[var(--lrs-gold)]">Ranking</h2>
@@ -770,10 +842,8 @@ export function Ranking({
             <RankingVazio texto="Ninguém no ranking ainda. Seja a primeira a subir no pódio!" />
           )}
           {rows?.map((row, i) => {
-            // a linha é minha quando o id da conta bate; sem login, cai no apelido
-            const isMe = conta.id
-              ? row.playerKey === conta.id
-              : row.player.trim().toLowerCase() === mine;
+            // Sem sessão, não associa uma conta Google a um apelido local igual.
+            const isMe = !!conta.id && row.playerKey === conta.id;
             return (
               <div
                 key={row.id}
@@ -786,7 +856,7 @@ export function Ranking({
                 <span className="lrs-display w-6 text-lg font-bold text-[var(--lrs-cyan)]">{i + 1}</span>
                 <Foto url={row.avatar} nome={row.player} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm text-white">{row.player}</div>
+                  <div className="truncate text-sm text-white">{row.displayName ?? `${row.player} #${row.id}`}</div>
                   <div className="truncate text-[10px] text-white/45">{skinName(row.skin)}</div>
                 </div>
                 <span className="lrs-nums text-xs text-white/50">{row.distance} m</span>
@@ -1066,7 +1136,7 @@ function Slider({
 
   const inteiro = Math.round(mostrado);
   return (
-    <label className={`block ${disabled ? "opacity-50" : ""}`}>
+    <div className={`block ${disabled ? "opacity-50" : ""}`}>
       <div className="flex justify-between text-sm text-white/80">
         <span>{label}</span>
         <span className="lrs-nums text-white/50">
@@ -1075,6 +1145,7 @@ function Slider({
       </div>
       <input
         type="range"
+        aria-label={label}
         min={min}
         max={max}
         value={inteiro}
@@ -1082,7 +1153,7 @@ function Slider({
         onChange={(e) => onChange(Number(e.target.value) / 100)}
         className="mt-1 h-2 w-full appearance-none rounded-full bg-black/40 accent-[var(--lrs-pink)] disabled:cursor-not-allowed"
       />
-    </label>
+    </div>
   );
 }
 
@@ -1131,6 +1202,7 @@ export function Settings({
   onSaveName,
   onChange,
   onReset,
+  onRestaurar,
   onOpenButtons,
   onOpenAdmin,
   onClose,
@@ -1146,6 +1218,8 @@ export function Settings({
   onChange: (next: Partial<GameSettings>) => void;
   /** devolve null quando apagou, ou a mensagem de erro (senha errada) */
   onReset: (senha: string) => string | null;
+  /** abre a tela de entrar numa conta já criada (nada é apagado) */
+  onRestaurar: () => void;
   onOpenButtons: () => void;
   onOpenAdmin?: () => void;
   onClose: () => void;
@@ -1173,6 +1247,7 @@ export function Settings({
         <div className="mt-1 flex gap-2">
           <input
             id="lrs-apelido"
+            aria-label="Apelido no ranking"
             value={nome}
             maxLength={NOME_MAX}
             onChange={(e) => {
@@ -1303,11 +1378,12 @@ export function Settings({
       {confirming ? (
         <div className="mt-2 rounded-xl border-2 border-[var(--lrs-pink)] bg-black/30 p-3">
           <p className="text-sm text-white/80">
-            Isso apaga moedas, recorde, itens especiais e skins liberadas. Digite a senha da conta para
-            confirmar.
+            Isso zera moedas, recorde, itens especiais e skins liberadas <strong>desta conta</strong> (o
+            apelido e a senha continuam). Digite a senha da conta para confirmar.
           </p>
           <input
             type="password"
+            aria-label="Senha da conta para zerar o progresso"
             value={senhaReset}
             maxLength={16}
             onChange={(e) => {
@@ -1348,13 +1424,26 @@ export function Settings({
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => setConfirming(true)}
-          className="lrs-btn mt-2 w-full rounded-xl bg-[var(--lrs-surface2)] py-2 text-sm text-white"
-        >
-          Restaurar progresso
-        </button>
+        <div className="mt-2 space-y-2">
+          <button
+            type="button"
+            onClick={onRestaurar}
+            className="lrs-btn w-full rounded-xl bg-[var(--lrs-cyan)] py-2.5 text-sm text-[var(--lrs-ink)]"
+          >
+            Restaurar conta (entrar com apelido e senha)
+          </button>
+          <p className="text-[11px] text-white/45">
+            Volta para uma conta que você já criou neste aparelho, com todo o progresso dela. A conta atual
+            fica salva.
+          </p>
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="lrs-btn w-full rounded-xl border border-[var(--lrs-pink)]/60 bg-[var(--lrs-surface2)] py-2 text-xs text-[var(--lrs-pink)]"
+          >
+            Zerar progresso desta conta
+          </button>
+        </div>
       )}
 
       <button
@@ -1497,6 +1586,7 @@ export function AdminPanel({
   onMover,
   onDesbloquearTudo,
   onResetProgresso,
+  onReiniciarSeed,
   onClose,
 }: {
   flags: AdminFlags;
@@ -1513,6 +1603,7 @@ export function AdminPanel({
   onMover: (eixo: "x" | "y" | "z", passo: number) => void;
   onDesbloquearTudo: () => void;
   onResetProgresso: () => void;
+  onReiniciarSeed: (seed: number) => void;
   onClose: () => void;
 }) {
   const obstaculos: [ObstacleType, string][] = [
@@ -1553,6 +1644,19 @@ export function AdminPanel({
         <span>Obst. {debug?.obstacles ?? "—"}</span>
         <span>Itens {debug?.items ?? "—"}</span>
         <span className="truncate">{debug?.area ?? "—"}</span>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <span className="lrs-nums min-w-0 flex-1 truncate text-[11px] text-white/75" data-testid="admin-seed">
+          Seed {debug ? debug.seed : "—"}
+        </span>
+        <button
+          type="button"
+          disabled={!jogando || !debug}
+          onClick={() => debug && onReiniciarSeed(debug.seed)}
+          className="lrs-btn shrink-0 rounded-xl border-2 border-[var(--lrs-ink)] bg-[var(--lrs-lime)] px-3 py-2 text-[11px] font-bold text-[var(--lrs-ink)] disabled:opacity-40"
+        >
+          Reiniciar com a mesma seed
+        </button>
       </div>
 
       {/* ---- economia e progresso ---- */}

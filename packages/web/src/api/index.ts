@@ -3,6 +3,7 @@ import { createApp } from "./__core/app";
 import { auth } from "./auth";
 import { ping } from "./routes/ping";
 import { scores } from "./routes/scores";
+import { protegerOrigens } from "./security/origins";
 
 export const router = {
   ping,
@@ -18,4 +19,4 @@ const app = createApp(router);
 // login com conta Google (Better Auth + login gerenciado da Runable)
 app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 
-export default app;
+export default protegerOrigens(app);
