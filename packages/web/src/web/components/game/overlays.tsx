@@ -18,17 +18,13 @@ export interface GameSettings {
   onScreenButtons: boolean;
   vibration: boolean;
   reduceFx: boolean;
-  /** tamanho dos botões na tela (1 = padrão) */
   btnScale: number;
-  /** altura dos botões: 0 = rente ao rodapé, 1 = no meio da tela */
   btnBottom: number;
-  /** largura que a fileira de botões ocupa: 1 = tela toda, 0.4 = bem juntinhos */
   btnSpread: number;
 }
 
-/** Estilo da fileira de botões na tela, a partir das configurações do jogador. */
 export function estiloBotoes(s: GameSettings) {
-  const margem = (1 - s.btnSpread) * 50; // % de cada lado
+  const margem = (1 - s.btnSpread) * 50;
   return {
     caixa: {
       left: `${margem}%`,
@@ -43,22 +39,12 @@ export function estiloBotoes(s: GameSettings) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Regras da conta (nome e senha)
-// ---------------------------------------------------------------------------
-
-/** quanto custa, em moedas, trocar o apelido depois de criar a conta */
 export const NOME_CUSTO = 20_000;
 export const NOME_MIN = 4;
 export const NOME_MAX = 8;
-/** só pode trocar o nome uma vez por mês */
 export const NOME_ESPERA_MS = 30 * 24 * 60 * 60 * 1000;
 export const SENHA_MIN = 4;
 
-/**
- * Confere as regras do apelido: sem espaços, só letras e números,
- * de 4 a 8 caracteres. Devolve o erro em texto ou null quando está tudo certo.
- */
 export function validarNome(nome: string, minimo = NOME_MIN): string | null {
   if (!nome) return "Escreva um apelido.";
   if (/\s/.test(nome)) return "O apelido não pode ter espaços.";
@@ -68,7 +54,6 @@ export function validarNome(nome: string, minimo = NOME_MIN): string | null {
   return null;
 }
 
-/** Quantos dias ainda faltam para poder trocar o apelido de novo. */
 export function diasParaTrocarNome(ultimaTroca: number | null): number {
   if (!ultimaTroca) return 0;
   const falta = ultimaTroca + NOME_ESPERA_MS - Date.now();
@@ -83,13 +68,6 @@ export function Frame({ children }: { children: React.ReactNode }) {
   );
 }
 
-/**
- * Criação da conta: apelido + senha. Aparece antes do menu, na primeira vez.
- *
- * Detalhe escondido: clicar 5 vezes seguidas no botão "Confirmar" abre o campo
- * "Chave de acesso". Com ele aberto o mínimo de caracteres do apelido cai para
- * 3, que é o caminho da conta admin ("adm").
- */
 export function NameGate({
   modoInicial = "criar",
   contas = [],
@@ -99,11 +77,9 @@ export function NameGate({
   onCancel,
 }: {
   modoInicial?: "criar" | "entrar";
-  /** apelidos das contas já salvas neste aparelho */
   contas?: string[];
   contaAtiva?: string;
   onConfirm: (nome: string, senha: string, chave: string) => string | null;
-  /** entrar numa conta existente: devolve null se deu certo, ou o erro */
   onEntrar: (nome: string, senha: string) => string | null;
   onCancel?: () => void;
 }) {
@@ -134,7 +110,6 @@ export function NameGate({
       setErro(onEntrar(limpo, senha));
       return;
     }
-    // contador do atalho escondido: 5 cliques no Confirmar abrem a chave
     const n = cliques + 1;
     setCliques(n);
     if (n >= 5 && !modoChave) {
@@ -294,7 +269,6 @@ export function Menu({
   best: number;
   coins: number;
   playerName: string;
-  /** conta Google usada no placar global */
   conta: ContaOnline;
   onPlay: () => void;
   onHowTo: () => void;
@@ -343,7 +317,6 @@ export function Menu({
           trocar de conta
         </button>
       </div>
-      {/* estado da conta online: sem ela o recorde não vai para o placar global */}
       <div className="mt-2 flex items-center justify-center gap-2 text-xs">
         {conta.logada ? (
           <>
@@ -465,7 +438,6 @@ export function Paused({
 }: {
   onResume: () => void;
   onMenu: () => void;
-  /** só existe na conta admin: abre o painel sem sair da partida */
   onAdmin?: () => void;
 }) {
   return (
@@ -500,7 +472,6 @@ export function Paused({
   );
 }
 
-/** Como terminou o envio da corrida para o placar global. */
 export type SubmitState = "sending" | "record" | "kept" | "error" | "deslogado" | "teste";
 
 export function GameOver({
@@ -521,13 +492,11 @@ export function GameOver({
   coinTotal: number;
   playerName: string;
   submitState: SubmitState;
-  /** abre o login do Google quando a corrida não pôde entrar no placar */
   onEntrar: () => void;
   onRestart: () => void;
   onMenu: () => void;
   onSkins: () => void;
 }) {
-  // o saldo do cofrinho sobe animado até o total, somando as moedas da corrida
   const inicio = Math.max(0, coinTotal - result.coins);
   const [cofrinho, setCofrinho] = useState(inicio);
   useEffect(() => {
@@ -585,7 +554,6 @@ export function GameOver({
         ))}
       </div>
 
-      {/* moedas da corrida voando para o cofrinho */}
       <div className="relative mt-3">
         <div className="pointer-events-none absolute inset-x-0 -top-6 flex justify-center gap-3">
           {result.coins > 0 &&
@@ -642,10 +610,6 @@ export function GameOver({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Ranking com abas Local / Global
-// ---------------------------------------------------------------------------
-
 export interface LocalRun {
   score: number;
   distance: number;
@@ -657,18 +621,14 @@ export interface LocalRun {
 export interface GlobalRow {
   id: number;
   player: string;
-  /** Nome + identificador da linha: diferencia contas com nomes iguais. */
   displayName?: string;
   score: number;
   distance: number;
   skin?: string | null;
-  /** id da conta Google dona da linha */
   playerKey?: string;
-  /** foto da conta Google */
   avatar?: string | null;
 }
 
-/** Estado da conta Google usada para entrar no placar global. */
 export interface ContaOnline {
   logada: boolean;
   carregando: boolean;
@@ -683,7 +643,6 @@ function skinName(key: string | null | undefined) {
   return SKINS.find((s) => s.key === key)?.name ?? "Luiza Clássica";
 }
 
-/** Foto da conta Google; sem foto, mostra a primeira letra do nome. */
 function Foto({ url, nome }: { url?: string | null; nome: string }) {
   if (url) {
     return (
@@ -702,7 +661,6 @@ function Foto({ url, nome }: { url?: string | null; nome: string }) {
   );
 }
 
-/** Botão de login com a marca do Google. */
 export function BotaoGoogle({
   onClick,
   carregando,
@@ -742,7 +700,6 @@ export function BotaoGoogle({
   );
 }
 
-/** Cartão no topo do ranking global com o estado da conta Google. */
 function ContaBox({ conta }: { conta: ContaOnline }) {
   if (conta.logada) {
     return (
@@ -775,7 +732,6 @@ function ContaBox({ conta }: { conta: ContaOnline }) {
   );
 }
 
-/** Ilustração simples para quando ainda não existe nenhum recorde. */
 function RankingVazio({ texto }: { texto: string }) {
   return (
     <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-[var(--lrs-locked)] bg-black/20 px-4 py-7 text-center">
@@ -807,7 +763,6 @@ export function Ranking({
   rows: GlobalRow[] | undefined;
   loading: boolean;
   localRuns: LocalRun[];
-  /** conta Google: sem ela o resultado não entra no placar global */
   conta: ContaOnline;
   onClose: () => void;
 }) {
@@ -842,7 +797,6 @@ export function Ranking({
             <RankingVazio texto="Ninguém no ranking ainda. Seja a primeira a subir no pódio!" />
           )}
           {rows?.map((row, i) => {
-            // Sem sessão, não associa uma conta Google a um apelido local igual.
             const isMe = !!conta.id && row.playerKey === conta.id;
             return (
               <div
@@ -907,10 +861,6 @@ export function Ranking({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Personagens (skins 3D)
-// ---------------------------------------------------------------------------
-
 const TIER_LABEL: Record<SkinInfo["tier"], string> = {
   padrao: "Padrão",
   comum: "Comum",
@@ -920,7 +870,6 @@ const TIER_LABEL: Record<SkinInfo["tier"], string> = {
   admin: "Admin",
 };
 
-/** Miniatura low poly da skin em SVG — mesmas cores do boneco 3D. */
 function SkinThumb({ skin, locked }: { skin: SkinInfo; locked: boolean }) {
   const b = skin.body;
   const c = (color: string) => (locked ? "var(--lrs-locked)" : color);
@@ -952,7 +901,6 @@ export function SkinPicker({
   onSelect: (skin: SkinKey) => void;
   onClose: () => void;
 }) {
-  // personagem em destaque no painel de preview (começa no que está em uso)
   const [preview, setPreview] = useState<SkinKey>(selected);
   const skin = SKINS.find((s) => s.key === preview) ?? SKINS[0];
   const unlocked = isUnlocked(skin, progress);
@@ -961,7 +909,6 @@ export function SkinPicker({
 
   return (
     <div className="lrs-panel lrs-rise max-h-full w-full max-w-3xl overflow-y-auto rounded-3xl p-4 sm:p-6">
-      {/* ---- topo: seta de voltar, título e carteira ---- */}
       <div className="flex items-start gap-3">
         <button
           type="button"
@@ -987,7 +934,6 @@ export function SkinPicker({
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,220px)_1fr]">
-        {/* ---- preview grande do personagem ---- */}
         <div
           className="flex flex-col rounded-2xl border-[3px] bg-[rgba(16,6,31,0.55)] p-3"
           style={{ borderColor: active ? "var(--lrs-pink)" : unlocked ? "var(--lrs-cyan)" : "var(--lrs-locked)" }}
@@ -1036,7 +982,6 @@ export function SkinPicker({
           )}
         </div>
 
-        {/* ---- grade de personagens ---- */}
         <div className="grid grid-cols-3 gap-2 self-start sm:grid-cols-4">
           {SKINS.map((s) => {
             const ok = isUnlocked(s, progress);
@@ -1080,17 +1025,6 @@ export function SkinPicker({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Configurações
-// ---------------------------------------------------------------------------
-
-/**
- * Slider de 0 a 100%.
- *
- * Quando `disabled` fica ligado (caso do "Mudo"), o valor mostrado desliza
- * animado até 0% e o controle trava; ao destravar, ele desliza de volta para o
- * valor que estava guardado.
- */
 function Slider({
   label,
   value,
@@ -1109,7 +1043,6 @@ function Slider({
   formato?: (v: number) => string;
 }) {
   const alvo = disabled ? 0 : Math.round(value * 100);
-  // valor que aparece na tela: persegue o alvo quadro a quadro (animação)
   const [mostrado, setMostrado] = useState(alvo);
   const mostradoRef = useRef(mostrado);
   mostradoRef.current = mostrado;
@@ -1120,7 +1053,6 @@ function Slider({
     const passo = () => {
       const atual = mostradoRef.current;
       const delta = alvo - atual;
-      // chega perto o bastante: encaixa no alvo e para
       if (Math.abs(delta) <= 1) {
         setMostrado(alvo);
         return;
@@ -1211,14 +1143,10 @@ export function Settings({
   playerName: string;
   coins: number;
   admin: boolean;
-  /** quando o apelido foi trocado pela última vez (null = nunca) */
   ultimaTrocaNome: number | null;
-  /** devolve null quando deu certo, ou a mensagem de erro */
   onSaveName: (nome: string) => string | null;
   onChange: (next: Partial<GameSettings>) => void;
-  /** devolve null quando apagou, ou a mensagem de erro (senha errada) */
   onReset: (senha: string) => string | null;
-  /** abre a tela de entrar numa conta já criada (nada é apagado) */
   onRestaurar: () => void;
   onOpenButtons: () => void;
   onOpenAdmin?: () => void;
@@ -1461,15 +1389,6 @@ export function Settings({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Organizar botões da tela
-// ---------------------------------------------------------------------------
-
-/**
- * Editor da fileira de botões: os botões de verdade continuam aparecendo no
- * rodapé enquanto os controles são mexidos, então dá para ver o resultado na
- * hora.
- */
 export function ButtonLayout({
   settings,
   onChange,
@@ -1530,11 +1449,6 @@ export function ButtonLayout({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Conta admin
-// ---------------------------------------------------------------------------
-
-/** Botãozinho quadrado usado no painel admin. */
 function AdminBtn({
   children,
   on,
@@ -1567,10 +1481,6 @@ function AdminTitulo({ texto }: { texto: string }) {
   );
 }
 
-/**
- * Painel de poderes da conta admin. Só a conta "adm" chega aqui, e ele fala
- * direto com os métodos admin do motor 3D.
- */
 export function AdminPanel({
   flags,
   debug,
@@ -1632,7 +1542,6 @@ export function AdminPanel({
         </button>
       </div>
 
-      {/* ---- overlay de debug ---- */}
       <AdminTitulo texto="Debug" />
       <div className="lrs-nums mt-1 grid grid-cols-3 gap-1 rounded-xl border-2 border-[var(--lrs-ink)] bg-black/35 p-2 text-[11px] text-white/75">
         <span>FPS {debug?.fps ?? "—"}</span>
@@ -1659,7 +1568,6 @@ export function AdminPanel({
         </button>
       </div>
 
-      {/* ---- economia e progresso ---- */}
       <AdminTitulo texto="Economia e progresso" />
       <div className="mt-1 grid grid-cols-3 gap-2">
         <AdminBtn onClick={() => onMoedas(100_000)}>+100 mil moedas</AdminBtn>
@@ -1681,7 +1589,6 @@ export function AdminPanel({
         Zerar progresso desta conta
       </button>
 
-      {/* ---- controle da partida ---- */}
       <AdminTitulo texto="Partida" />
       <div className="mt-1 grid grid-cols-3 gap-2">
         <AdminBtn on={flags.god} onClick={() => onFlags({ god: !flags.god })}>
@@ -1708,7 +1615,6 @@ export function AdminPanel({
         </div>
       </div>
 
-      {/* ---- spawn ---- */}
       <AdminTitulo texto="Spawnar na pista" />
       <div className="mt-1 grid grid-cols-4 gap-2">
         {obstaculos.map(([tipo, nome]) => (
@@ -1732,7 +1638,6 @@ export function AdminPanel({
         Limpar a pista
       </button>
 
-      {/* ---- biomas ---- */}
       <AdminTitulo texto="Pular para a área" />
       <div className="mt-1 grid grid-cols-3 gap-2">
         {areas.map((nome, i) => (
@@ -1742,7 +1647,6 @@ export function AdminPanel({
         ))}
       </div>
 
-      {/* ---- câmera e movimentação ---- */}
       <AdminTitulo texto="Câmera e movimentação" />
       <div className="mt-1 grid grid-cols-3 gap-2">
         <AdminBtn on={flags.freeCam} onClick={() => onFlags({ freeCam: !flags.freeCam })}>
@@ -1773,10 +1677,6 @@ export function AdminPanel({
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Missões diárias
-// ---------------------------------------------------------------------------
 
 export function Missions({
   missoes,

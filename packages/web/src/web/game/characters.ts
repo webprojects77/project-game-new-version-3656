@@ -1,10 +1,3 @@
-/**
- * Personagens 3D low poly — Luiza, policial e cachorro.
- *
- * Nada aqui usa foto/billboard: são bonecos montados com caixas, esferas e
- * cones, com membros separados para animar (corrida, pulo, deslize, batida).
- * Silhueta > detalhe, como pede o documento de specs visuais.
- */
 import * as THREE from "three";
 import { PALETTE } from "./palette";
 import type { BodyPalette } from "./skins";
@@ -25,12 +18,6 @@ function box(w: number, h: number, d: number, m: THREE.Material) {
   return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
 }
 
-/**
- * Boneco humanoide low poly.
- *
- * Os membros ficam dentro de "pivôs" (Object3D) posicionados na articulação,
- * então girar o pivô gira o braço/perna a partir do ombro/quadril.
- */
 export class Humanoid {
   readonly group = new THREE.Group();
   private root = new THREE.Group();
@@ -69,7 +56,6 @@ export class Humanoid {
     };
     const m = this.bodyMats;
 
-    // ---- tronco -----------------------------------------------------------
     this.torso = box(0.62, 0.72, 0.36, m.shirt);
     this.torso.position.y = 1.16;
     this.hips.add(this.torso);
@@ -82,7 +68,6 @@ export class Humanoid {
     chest.position.set(0, 1.3, 0.02);
     this.hips.add(chest);
 
-    // ---- cabeça -----------------------------------------------------------
     this.head = new THREE.Group();
     const skull = box(0.42, 0.42, 0.4, m.skin);
     this.head.add(skull);
@@ -117,7 +102,6 @@ export class Humanoid {
     this.head.position.y = 1.73;
     this.hips.add(this.head);
 
-    // ---- braços -----------------------------------------------------------
     for (const [pivot, sx] of [
       [this.armL, -1],
       [this.armR, 1],
@@ -132,7 +116,6 @@ export class Humanoid {
       this.hips.add(pivot);
     }
 
-    // ---- pernas -----------------------------------------------------------
     for (const [pivot, sx] of [
       [this.legL, -1],
       [this.legR, 1],
@@ -155,7 +138,6 @@ export class Humanoid {
     if (opts.scale) this.group.scale.setScalar(opts.scale);
   }
 
-  /** Troca as cores sem reconstruir a malha (usado ao trocar de skin). */
   setPalette(p: BodyPalette) {
     this.bodyMats.skin.color.set(p.skin);
     this.bodyMats.hair.color.set(p.hair);
@@ -174,10 +156,6 @@ export class Humanoid {
     }
   }
 
-  /**
-   * Animação procedural: corrida com braços e pernas alternados, pulo com
-   * joelhos dobrados, deslize deitado e cambalhota curta ao levar batida.
-   */
   animate(t: number, pose: CharPose, speed = 1) {
     const swing = Math.sin(t * 11 * speed);
     const swing2 = Math.sin(t * 22 * speed);
@@ -208,7 +186,6 @@ export class Humanoid {
       this.root.rotation.x = 0;
       this.root.position.y = 0;
     } else if (pose === "slide") {
-      // deitada, quase rente ao chão
       this.root.rotation.x = -1.24;
       this.root.position.y = 0.34;
       this.legL.rotation.x = 0.25;
@@ -220,7 +197,6 @@ export class Humanoid {
       this.hips.position.y = 0;
       this.head.rotation.x = 0.9;
     } else {
-      // batida: gira o tronco para trás e abre os braços
       this.root.rotation.x = 0.35;
       this.root.position.y = 0;
       this.legL.rotation.x = -0.7;
@@ -242,7 +218,6 @@ export class Humanoid {
   }
 }
 
-/** Cachorro low poly: corpo, cabeça, orelhas, 4 patas animadas e rabo. */
 export class Dog {
   readonly group = new THREE.Group();
   private legs: THREE.Object3D[] = [];
@@ -265,7 +240,6 @@ export class Dog {
     chest.position.set(0, 0.72, -0.58);
     this.group.add(chest);
 
-    // cabeça
     const skull = box(0.42, 0.38, 0.42, fur);
     this.head.add(skull);
     const snout = box(0.24, 0.2, 0.3, dark);
@@ -329,7 +303,6 @@ export class Dog {
   }
 }
 
-/** Policial: mesmo boneco, uniforme azul, boné e cassetete na mão. */
 export function makeCop() {
   const cop = new Humanoid(
     {

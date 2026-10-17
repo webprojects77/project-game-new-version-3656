@@ -1,4 +1,3 @@
-/** Mulberry32: sequência determinística por instância, sem estado global. */
 export class Sorteio {
   private estado: number;
   constructor(readonly seed: number) {

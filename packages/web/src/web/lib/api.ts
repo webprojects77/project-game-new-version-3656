@@ -6,15 +6,12 @@ import { authClient } from "./auth";
 
 const link = new RPCLink({
   url: `${window.location.origin}/api/rpc`,
-  // manda o crachá da conta Google junto, senão o servidor não salva no placar
   headers: () => {
     const token = authClient.managedAuth.getToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   },
 });
 
-/** Direct typed client: await client.ping() */
 export const client: AppRouterClient = createORPCClient(link);
 
-/** TanStack Query helpers: useQuery(orpc.ping.queryOptions()) */
 export const orpc = createTanstackQueryUtils(client);

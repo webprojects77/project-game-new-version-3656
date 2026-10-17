@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-/** Skins competitivas; visuais exclusivos do admin não entram no placar. */
 export const SKINS_COMPETITIVAS = [
   "classica", "esportiva", "praiana", "escolar", "shopping", "neon", "polaroid",
 ] as const;
@@ -12,12 +11,6 @@ export interface ResultadoCorrida {
   specials: number;
 }
 
-/**
- * Limite conservador da corrida normal:
- * distância rende até x4 (boost + x2); moedas já incluem o combo e rendem 10;
- * especial rende até 800; corações com vida cheia podem render 50 extras.
- * Não é prova de partida real — apenas recusa dados incoerentes.
- */
 export function pontuacaoMaxima(r: ResultadoCorrida): number {
   const bonusCoracoes = 50 * (1 + Math.floor(r.distance / 1000));
   return 4 * (r.distance + 1) + 10 * r.coins + 800 * r.specials + bonusCoracoes;
@@ -29,7 +22,6 @@ export function erroDePlausibilidade(r: ResultadoCorrida): string | null {
   if (r.specials > 1 || (r.specials > 0 && r.distance < 700)) {
     return "Itens especiais incompatíveis com a distância.";
   }
-  // Margem generosa, acima da densidade de moedas que o spawner consegue criar.
   if (r.coins > 8 * r.distance + 80) return "Moedas incompatíveis com a distância.";
   if (r.score < r.distance) return "Pontuação menor que a distância percorrida.";
   if (r.score > pontuacaoMaxima(r)) return "Pontuação incompatível com os itens e a distância.";
@@ -47,7 +39,6 @@ export const resultadoSchema = z.object({
   if (erro) ctx.addIssue({ code: "custom", message: erro });
 });
 
-/** Identificador público único da linha diferencia contas com o mesmo nome. */
 export function nomeNoPlacar(nome: string, id: number): string {
   const semControle = [...nome].filter((c) => {
     const code = c.codePointAt(0) ?? 0;

@@ -1,8 +1,6 @@
-/** Áreas da corrida, na ordem em que aparecem (troca a cada 2.200 m). */
 export interface Biome {
   name: string;
   hint: string;
-  /** gradiente do céu, do topo até o horizonte */
   sky: [string, string, string, string, string];
   fog: string;
   hemiSky: string;
@@ -11,14 +9,11 @@ export interface Biome {
   rim: string;
   walk: string;
   neon: string;
-  /** cor dos volumes laterais (casas, muros, prédios, árvores) */
   side: string[];
-  /** faixa de altura dos volumes laterais */
   sideH: [number, number];
   obstacle: { low: string; high: string; block: string; accent: string };
 }
 
-/** Seis áreas: bairro → escola → centro → praça → praia → shopping, com hora do dia diferente. */
 export const BIOMES: Biome[] = [
   {
     name: "BAIRRO DA LUIZA",
@@ -81,7 +76,6 @@ export const BIOMES: Biome[] = [
     obstacle: { low: "#7A4A28", high: "#3AC98A", block: "#2A6B8C", accent: "#E8FFD6" },
   },
   {
-    // Área 5: sol forte, areia bege, mar turquesa e guarda-sóis listrados.
     name: "PRAIA",
     hint: "Areia, guarda-sóis e coqueiros — sol forte",
     sky: ["#1B7FC4", "#3FA9E0", "#8FD8F2", "#D8F2F7", "#FFF6DC"],
@@ -97,7 +91,6 @@ export const BIOMES: Biome[] = [
     obstacle: { low: "#FF6B6B", high: "#2BD9C9", block: "#B98A4A", accent: "#FFF6DC" },
   },
   {
-    // Área 6: luz artificial fria e uniforme, mármore polido e vitrines.
     name: "SHOPPING",
     hint: "Vitrines, mármore e escadas rolantes — luz fria",
     sky: ["#DDE4EC", "#E8EDF3", "#F2F5F8", "#F7F9FB", "#FFFFFF"],

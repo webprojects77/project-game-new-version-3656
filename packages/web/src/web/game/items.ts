@@ -1,9 +1,3 @@
-/**
- * Itens coletáveis em 3D low poly (specs visuais v2).
- *
- * Nada de billboard/foto: cada item é uma malha de verdade, com contorno de
- * cor forte, flutuando e girando devagar para chamar atenção na pista.
- */
 import * as THREE from "three";
 import { PALETTE } from "./palette";
 
@@ -19,17 +13,11 @@ function glowMat(color: string, emissive = 0.55) {
   });
 }
 
-/**
- * Gravação temática da moeda: cada área tem um símbolo diferente no meio.
- * 0 bairro (casinha) · 1 escola (lápis) · 2 centro (prédio) · 3 praça (folha)
- * 4 praia (concha) · 5 shopping (sacola)
- */
 function makeMotif(motif: number): THREE.Object3D {
   const m = glowMat("#FFE9A8", 0.85);
   const g = new THREE.Group();
   switch (motif) {
     case 1: {
-      // lápis: corpo comprido + ponta
       const corpo = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.3, 0.07), m);
       g.add(corpo);
       const ponta = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 4), m);
@@ -38,7 +26,6 @@ function makeMotif(motif: number): THREE.Object3D {
       break;
     }
     case 2: {
-      // prédio: dois blocos de alturas diferentes
       const a = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.32, 0.07), m);
       a.position.x = -0.07;
       g.add(a);
@@ -48,7 +35,6 @@ function makeMotif(motif: number): THREE.Object3D {
       break;
     }
     case 3: {
-      // folha: losango achatado
       const folha = new THREE.Mesh(new THREE.OctahedronGeometry(0.17, 0), m);
       folha.scale.set(0.6, 1, 0.3);
       folha.rotation.z = 0.5;
@@ -56,7 +42,6 @@ function makeMotif(motif: number): THREE.Object3D {
       break;
     }
     case 4: {
-      // concha: leque de nervuras
       for (let i = -2; i <= 2; i++) {
         const nervura = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.26, 0.06), m);
         nervura.position.x = i * 0.055;
@@ -66,7 +51,6 @@ function makeMotif(motif: number): THREE.Object3D {
       break;
     }
     case 5: {
-      // sacola: corpo + alça
       const corpo = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.22, 0.07), m);
       corpo.position.y = -0.04;
       g.add(corpo);
@@ -76,7 +60,6 @@ function makeMotif(motif: number): THREE.Object3D {
       break;
     }
     default: {
-      // casinha: quadrado + telhado
       const parede = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.18, 0.07), m);
       parede.position.y = -0.05;
       g.add(parede);
@@ -90,7 +73,6 @@ function makeMotif(motif: number): THREE.Object3D {
   return g;
 }
 
-/** Moeda: cilindro dourado achatado, sempre girando no próprio eixo. */
 function makeCoin(motif = 0) {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.1, 14), glowMat(PALETTE.gold, 0.6));
@@ -99,7 +81,6 @@ function makeCoin(motif = 0) {
   const core = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.13, 12), glowMat("#FFE9A8", 0.75));
   core.rotation.z = Math.PI / 2;
   g.add(core);
-  // símbolo gravado nas duas faces da moeda
   for (const sx of [-1, 1]) {
     const face = makeMotif(motif);
     face.position.x = sx * 0.075;
@@ -109,7 +90,6 @@ function makeCoin(motif = 0) {
   return g;
 }
 
-/** Coração de vida — VERDE (#3CE87A), a cor de cura do documento. */
 function makeHeart() {
   const g = new THREE.Group();
   const m = glowMat(PALETTE.lime, 0.65);
@@ -126,7 +106,6 @@ function makeHeart() {
   return g;
 }
 
-/** Boost: raio laranja/amarelo (dois prismas cruzados). */
 function makeBoost() {
   const g = new THREE.Group();
   const top = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.5, 4), glowMat(PALETTE.gold, 0.8));
@@ -140,7 +119,6 @@ function makeBoost() {
   return g;
 }
 
-/** Item especial: moldura polaroid rosa/ciano — o mais raro da pista. */
 function makeSpecial() {
   const g = new THREE.Group();
   const frame = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.78, 0.08), glowMat(PALETTE.paper, 0.25));
@@ -155,7 +133,6 @@ function makeSpecial() {
   return g;
 }
 
-/** Cria a malha 3D do item (motif = índice da área, usado na moeda). */
 export function makeItemMesh(kind: ItemKind, motif = 0): THREE.Object3D {
   if (kind === "coin") return makeCoin(motif);
   if (kind === "heart") return makeHeart();
@@ -163,7 +140,6 @@ export function makeItemMesh(kind: ItemKind, motif = 0): THREE.Object3D {
   return makeSpecial();
 }
 
-/** Flutuação + rotação lenta, chamada a cada quadro. */
 export function animateItem(kind: ItemKind, obj: THREE.Object3D, baseY: number, t: number) {
   obj.position.y = baseY + Math.sin(t * 3 + obj.position.z * 0.4) * 0.15;
   if (kind === "coin") obj.rotation.x = t * 3.4;
@@ -171,7 +147,6 @@ export function animateItem(kind: ItemKind, obj: THREE.Object3D, baseY: number, 
   else obj.rotation.y = t * 1.1;
 }
 
-/** Libera geometria e material do item. */
 export function disposeItem(obj: THREE.Object3D) {
   obj.traverse((child) => {
     if (child instanceof THREE.Mesh) {

@@ -46,7 +46,6 @@ export class ErrorBoundary extends Component<Props, State> {
 
   private addError(entry: ErrorEntry) {
     this.setState((prev) => {
-      // Dedupe by message
       if (prev.errors.some((e) => e.message === entry.message)) return null;
       return { errors: [...prev.errors, entry] };
     });
@@ -118,7 +117,6 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <View style={s.screen}>
-        {/* Crash background */}
         <View style={s.pageBg}>
           <View style={s.pageContent}>
             <Text style={s.sadFace}>:(</Text>
@@ -129,9 +127,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </View>
         </View>
 
-        {/* Bottom toast area */}
         <View style={s.toastWrapper}>
-          {/* Expanded error list */}
           {expanded && (
             <View style={[s.detailsPanel, { maxHeight: detailsMaxHeight }]}>
               <View style={s.detailsHeader}>
@@ -174,7 +170,6 @@ export class ErrorBoundary extends Component<Props, State> {
             </View>
           )}
 
-          {/* Toast bar */}
           <TouchableOpacity
             style={s.toast}
             onPress={() => this.setState((p) => ({ expanded: !p.expanded }))}
@@ -241,7 +236,6 @@ const s = StyleSheet.create({
     right: 0,
   },
 
-  // Expanded panel
   detailsPanel: {
     backgroundColor: "#1c1c1e",
     borderTopLeftRadius: 16,
@@ -274,7 +268,6 @@ const s = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // Collapsible error cards
   errorCard: {
     backgroundColor: "#111113",
     borderRadius: 10,
@@ -314,7 +307,6 @@ const s = StyleSheet.create({
     lineHeight: 17,
   },
 
-  // Toast bar
   toast: {
     flexDirection: "row",
     alignItems: "center",

@@ -14,7 +14,6 @@ const STYLE: Record<NotifyKind, { icon: string; color: string }> = {
   power: { icon: "⚡", color: "var(--lrs-gold)" },
 };
 
-/** Avisos que descem do topo da tela e somem sozinhos em ~2,5s. */
 export function Notifications({ items }: { items: Toast[] }) {
   if (items.length === 0) return null;
   return (

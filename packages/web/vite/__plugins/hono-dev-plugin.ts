@@ -47,7 +47,7 @@ function toWebRequest(req: import("http").IncomingMessage): Request {
     method: req.method,
     headers,
     body: hasBody ? (req as unknown as ReadableStream) : undefined,
-    // @ts-expect-error duplex needed for streaming request bodies
+    // @ts-expect-error
     duplex: hasBody ? "half" : undefined,
   });
 }

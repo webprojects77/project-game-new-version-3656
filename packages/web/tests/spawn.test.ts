@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type LinhaPlanejada, PlanejadorPista, SPAWN } from "../src/web/game/spawn";
 
-/** Simula uma corrida só com as regras da pista, sem WebGL. */
 function simular(seed: number, linhas: number, vidas = (i: number) => 1 + (i % 3)) {
   const p = new PlanejadorPista(seed);
   let distance = 0;

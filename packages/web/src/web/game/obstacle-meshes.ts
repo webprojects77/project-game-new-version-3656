@@ -5,13 +5,8 @@ import { PALETTE } from "./palette";
 import type { ObstacleType } from "./spawn";
 import { rand } from "./visual-random";
 
-/**
- * Qual peça modelada em 3D entra em cada área. Devolve `undefined` quando a
- * área usa um obstáculo desenhado em código (praia e shopping têm os seus).
- */
 export function modeloDoObstaculo(type: ObstacleType, biomeIdx: number): ModeloKey | undefined {
   if (type === "low" || type === "ride") {
-    // pular: cerca de madeira no bairro/praça, barricada na escola, cone no centro
     return ([
       "cercaMadeira",
       "cerquinha",
@@ -22,7 +17,6 @@ export function modeloDoObstaculo(type: ObstacleType, biomeIdx: number): ModeloK
     ] as (ModeloKey | undefined)[])[biomeIdx];
   }
   if (type === "block") {
-    // desviar: carro na rua, caixas no pátio da escola, ônibus da linha azul no centro
     return ([
       "carro",
       "caixas",
@@ -35,11 +29,6 @@ export function modeloDoObstaculo(type: ObstacleType, biomeIdx: number): ModeloK
   return undefined;
 }
 
-/**
- * Obstáculos são geometria low poly de verdade (sem foto), com forma e cor
- * variando por bioma: cerca/muro/placa no bairro, ônibus e semáforo no
- * centro, banco e arbusto na praça...
- */
 export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.Object3D {
   const b = BIOMES[biomeIdx];
   const group = new THREE.Group();
@@ -52,9 +41,7 @@ export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.
       emissiveIntensity: emissive,
     });
 
-  // --- obstáculos exclusivos da PRAIA (área 5) -------------------------
   if (biomeIdx === 4 && type === "high") {
-    // guarda-sol aberto: passa deslizando por baixo
     const poste = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.9, 8), mat("#B98A4A"));
     poste.position.y = 1.45;
     group.add(poste);
@@ -74,7 +61,6 @@ export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.
     return group;
   }
   if (biomeIdx === 4 && type === "low") {
-    // cadeira de praia: pular por cima
     const assento = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 0.9), mat("#FF6B6B"));
     assento.position.y = 0.6;
     group.add(assento);
@@ -92,9 +78,7 @@ export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.
     return group;
   }
 
-  // --- obstáculos exclusivos do SHOPPING (área 6) ----------------------
   if (biomeIdx === 5 && type === "ride") {
-    // escada rolante: dá para subir em cima pulando
     const rampa = new THREE.Mesh(new THREE.BoxGeometry(2, 0.3, 3.2), mat("#9AA3AE"));
     rampa.position.set(0, 0.95, 0);
     rampa.rotation.x = 0.22;
@@ -113,7 +97,6 @@ export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.
     return group;
   }
   if (biomeIdx === 5 && type === "low") {
-    // carrinho de compras largado no meio do corredor
     const cesta = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.7, 0.9), mat("#C0392B"));
     cesta.position.y = 0.75;
     group.add(cesta);
@@ -137,7 +120,6 @@ export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.
   }
 
   if (type === "ride") {
-    // rampa turbo: dá para pular em cima dela (modelo .glb)
     const rampa = makeModelo("rampa");
     if (rampa) {
       group.add(rampa);
@@ -146,17 +128,14 @@ export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.
   }
 
   if (type === "ride" || type === "low") {
-    // baixo: pular. Cada área tem a sua peça modelada em 3D.
     const modelo = modeloDoObstaculo(type, biomeIdx);
     const peca = modelo ? makeModelo(modelo) : null;
     if (peca) {
       group.add(peca);
-      // uma leve variação de ângulo para não parecer tudo igual
       peca.rotation.y += rand(-0.06, 0.06);
       return group;
     }
 
-    // reserva: se o modelo ainda não carregou, usamos a cerca desenhada em código
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.55, 0.5), mat(b.obstacle.low));
     body.position.y = 0.72;
     group.add(body);
@@ -175,7 +154,6 @@ export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.
       group.add(stripe);
     }
   } else if (type === "high") {
-    // alto: deslizar. Varal (bairro), placa (escola), semáforo (centro), galho (praça)
     const bar = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.85, 0.4), mat(b.obstacle.high, 0.35));
     bar.position.y = 2.55;
     group.add(bar);
@@ -193,7 +171,6 @@ export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.
       group.add(leaf);
     }
   } else {
-    // bloqueia a faixa: carro (bairro), caixas (escola), ônibus (centro)...
     const modelo = modeloDoObstaculo(type, biomeIdx);
     const peca = modelo ? makeModelo(modelo) : null;
     if (peca) {
@@ -216,7 +193,6 @@ export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.
       rock.rotation.set(0.3, 0.6, 0.2);
       group.add(rock);
     } else if (biomeIdx === 4) {
-      // jangada encostada na areia com castelo de areia na frente
       const casco = new THREE.Mesh(new THREE.BoxGeometry(2, 0.4, 1.4), mat("#B98A4A"));
       casco.position.y = 0.3;
       group.add(casco);
@@ -232,7 +208,6 @@ export function construirObstaculo(type: ObstacleType, biomeIdx: number): THREE.
         group.add(torre);
       }
     } else if (biomeIdx === 5) {
-      // vitrine de loja fechada bloqueando o corredor
       const vidro = new THREE.Mesh(
         new THREE.BoxGeometry(2, 2.7, 0.16),
         new THREE.MeshStandardMaterial({

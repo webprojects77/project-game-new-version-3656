@@ -70,23 +70,19 @@ import {
 
 const SETTINGS_KEY = "lrs.settings";
 
-/** skin salva da conta ativa (cai na clássica se estiver vazia ou inválida) */
 function lerSkin(): SkinKey {
   const saved = localStorage.getItem(SKIN_KEY) as SkinKey | null;
   return saved && SKINS.some((s) => s.key === saved) ? saved : DEFAULT_SKIN;
 }
 
-/** quando o apelido foi trocado pela última vez (null = nunca / valor corrompido) */
 function lerTrocaNome(): number | null {
   const n = lerNumero(NAME_AT_KEY, -1);
   return n > 0 ? n : null;
 }
 
-/** Credenciais da conta admin (vêm da especificação do trabalho). */
 const ADMIN_NAME = "adm";
 const ADMIN_PASS = "9764";
 
-/** Interruptores admin desligados — estado de uma conta normal. */
 const ADMIN_OFF: AdminFlags = {
   god: false,
   invuln: false,
@@ -140,7 +136,6 @@ const DEFAULT_SETTINGS: GameSettings = {
   btnSpread: 1,
 };
 
-/** distância de swipe (px) para contar como gesto de faixa/pulo/slide */
 const SWIPE_LIMIAR = 31;
 
 function loadSettings(): GameSettings {
@@ -191,7 +186,6 @@ export function GameShell() {
   const [adminFlags, setAdminFlags] = useState<AdminFlags>(ADMIN_OFF);
   const [debug, setDebug] = useState<DebugInfo | null>(null);
   const [nameChangedAt, setNameChangedAt] = useState<number | null>(lerTrocaNome);
-  /** a tela de conta abre direto em "Entrar" quando já existe conta salva */
   const [modoConta, setModoConta] = useState<"criar" | "entrar">(() =>
     nomesDasContas().length > 0 ? "entrar" : "criar",
   );
@@ -205,7 +199,6 @@ export function GameShell() {
   const topScores = useTopScores();
   const submitScore = useSubmitScore();
 
-  // ---- conta Google (obrigatória para entrar no placar global) -----------
   const sessao = authClient.useSession();
   const usuario = sessao.data?.user ?? null;
   const entrarGoogle = useCallback(() => {
@@ -243,7 +236,6 @@ export function GameShell() {
     window.setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== toast.id)), 2600);
   }, []);
 
-  // ---- setup do motor 3D -------------------------------------------------
   useEffect(() => {
     if (!canvasRef.current) return;
     const audio = new GameAudio();
@@ -252,7 +244,6 @@ export function GameShell() {
     const onGameOver = (payload: GameOverPayload) => {
       setResult(payload);
 
-      // missões diárias: aplica a corrida e paga a recompensa das que fecharam
       const upd = aplicarCorrida(missoesRef.current, missionRef.current, {
         score: payload.score,
         distance: payload.distance,
@@ -268,7 +259,6 @@ export function GameShell() {
       }
       if (upd.recompensa > 0) audio.play("desbloqueio");
 
-      // moedas e itens especiais entram no cofrinho para sempre
       let newTotal = 0;
       setCoins((prev) => {
         newTotal = prev + payload.coins + upd.recompensa;
@@ -294,7 +284,6 @@ export function GameShell() {
         return prev;
       });
 
-      // histórico local das corridas (aba "Neste aparelho" do ranking)
       setRuns((prev) => {
         const next = [
           {
@@ -310,8 +299,6 @@ export function GameShell() {
         return next;
       });
 
-      // só vai para o placar global quem está logada com a conta Google:
-      // o servidor amarra o recorde ao id da conta, então ninguém usa o nome de outra
       const visual = skinRef.current;
       if (corridaTesteRef.current || visual === "policial" || visual === "cachorro") {
         setSubmitState("teste");
@@ -354,7 +341,6 @@ export function GameShell() {
         onNotify: notify,
       });
     } catch {
-      // sem WebGL não há 3D: avisamos em vez de deixar a tela em branco
       setFatal(
         "Este navegador não conseguiu iniciar o 3D (WebGL indisponível). Tente o Chrome atualizado ou ligue a aceleração de hardware nas configurações.",
       );
@@ -379,7 +365,6 @@ export function GameShell() {
     };
   }, [notify]);
 
-  // ---- aplica as configurações no motor e no som ------------------------
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     const audio = audioRef.current;
@@ -395,7 +380,6 @@ export function GameShell() {
   const input = useCallback((action: InputAction) => gameRef.current?.input(action), []);
 
   const startComSeed = useCallback((seed?: number) => {
-    // Corridas administrativas são testes locais, nunca resultados competitivos.
     corridaTesteRef.current = adminRef.current;
     setPanel("none");
     setResult(null);
@@ -404,10 +388,8 @@ export function GameShell() {
     setToasts([]);
     gameRef.current?.start(seed);
   }, []);
-  // Nunca repassa o evento do botão como seed.
   const startGame = useCallback(() => startComSeed(), [startComSeed]);
 
-  // ---- teclado ----------------------------------------------------------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const game = gameRef.current;
@@ -431,7 +413,6 @@ export function GameShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [input, startGame]);
 
-  // ---- swipe / toque ----------------------------------------------------
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
@@ -464,31 +445,25 @@ export function GameShell() {
     };
   }, [input]);
 
-  // ---- conta admin: repassa os interruptores para o motor ---------------
   useEffect(() => {
     gameRef.current?.setAdmin(isAdmin ? adminFlags : ADMIN_OFF);
   }, [adminFlags, isAdmin]);
 
-  // ---- overlay de debug: lê os números do motor 3x por segundo ----------
   useEffect(() => {
     if (!isAdmin || panel !== "admin") return;
     const ler = () => {
       const g = gameRef.current;
       if (g) setDebug(g.getDebug());
     };
-    // Lê na hora: sem isso o painel mostraria por um instante a seed da partida anterior.
     ler();
     const id = window.setInterval(ler, 330);
     return () => window.clearInterval(id);
   }, [isAdmin, panel]);
 
-  // ---- ações ------------------------------------------------------------
-  /** som curtinho de interface */
   const sfx = useCallback((key: Parameters<GameAudio["play"]>[0]) => {
     audioRef.current?.play(key);
   }, []);
 
-  /** abre um painel do menu com o som de abrir tela */
   function abrirPainel(next: Panel) {
     sfx(next === "none" ? "clique" : "abrirtela");
     setPanel(next);
@@ -517,7 +492,6 @@ export function GameShell() {
     gameRef.current?.setSkin(next);
   }
 
-  /** Recarrega todos os estados a partir da conta ativa no localStorage. */
   function recarregarConta() {
     const nome = localStorage.getItem(NAME_KEY) || "";
     const admin = localStorage.getItem(ADMIN_KEY) === "1";
@@ -537,15 +511,9 @@ export function GameShell() {
     gameRef.current?.setSkin(visual);
   }
 
-  /**
-   * Criar conta nova (aba "Criar conta"): apelido + senha, com o caminho
-   * escondido da conta admin (5 cliques + chave). A conta anterior não é
-   * apagada — ela fica salva e dá para voltar pela aba "Entrar".
-   */
   function criarConta(nome: string, senha: string, chave: string): string | null {
     const admin = nome.toLowerCase() === ADMIN_NAME && chave === ADMIN_PASS;
 
-    // a conta admin tem 3 letras, então ela só passa pelo campo de chave
     if (!admin) {
       const problema = validarNome(nome);
       if (problema) {
@@ -558,7 +526,6 @@ export function GameShell() {
       }
     }
     if (contaExiste(nome)) {
-      // admin que já existe: só entra nela, sem zerar nada
       if (admin) return entrarConta(nome, ADMIN_PASS);
       sfx("erro");
       return "Essa conta já existe neste aparelho. Use a aba Entrar.";
@@ -572,18 +539,12 @@ export function GameShell() {
     return null;
   }
 
-  /**
-   * Entrar numa conta já criada (aba "Entrar" / Restaurar conta): confere a
-   * senha e traz de volta moedas, recorde, skins e missões dela.
-   * Conta admin: apelido "adm" + senha "9764".
-   */
   function entrarConta(nome: string, senha: string): string | null {
     const limpo = nome.trim();
     const adminLogin = limpo.toLowerCase() === ADMIN_NAME && senha === ADMIN_PASS;
 
     if (!contaExiste(limpo)) {
       if (adminLogin) {
-        // a admin sempre existe: se ainda não estava no aparelho, nasce agora
         novaConta(ADMIN_NAME, ADMIN_PASS, true);
       } else {
         sfx("erro");
@@ -610,10 +571,6 @@ export function GameShell() {
     return null;
   }
 
-  /**
-   * Troca de apelido pelas configurações: cobra 20.000 moedas e só libera
-   * uma vez por mês. A conta admin passa direto.
-   */
   function trocarNome(nome: string): string | null {
     if (contaExiste(nome) && nome.toLowerCase() !== playerName.toLowerCase()) {
       sfx("erro");
@@ -657,10 +614,8 @@ export function GameShell() {
     return null;
   }
 
-  /** Abre a tela de conta já na aba Entrar (Restaurar conta / Trocar de conta). */
   function abrirEntrar() {
     guardarContaAtiva();
-    // a tela de conta só aparece no menu: se estiver numa partida, sai dela antes
     if (phase !== "menu") {
       setResult(null);
       gameRef.current?.toMenu();
@@ -669,7 +624,6 @@ export function GameShell() {
     abrirPainel("name");
   }
 
-  /** Apagar progresso: exige a senha da conta. Mantém a conta, zera só o progresso. */
   function resetProgressComSenha(senha: string): string | null {
     const salva = senhaDaConta(playerName);
     if (!isAdmin && salva && senha !== salva) {
@@ -697,14 +651,11 @@ export function GameShell() {
     guardarContaAtiva();
   }
 
-  // ---- poderes da conta admin -------------------------------------------
-  /** liga/desliga interruptores e repassa para o motor pelo efeito */
   function mudarFlags(next: Partial<AdminFlags>) {
     sfx("clique");
     setAdminFlags((f) => ({ ...f, ...next }));
   }
 
-  /** moedas ilimitadas: entram no cofrinho salvo e também na partida */
   function adminMoedas(quanto: number) {
     sfx("desbloqueio");
     const total = coins + quanto;
@@ -713,7 +664,6 @@ export function GameShell() {
     gameRef.current?.adminMoedas(quanto);
   }
 
-  /** libera tudo: moedas, recorde e itens especiais no teto */
   function adminLiberarTudo() {
     sfx("desbloqueio");
     localStorage.setItem(COINS_KEY, String(9_999_999));
@@ -729,14 +679,12 @@ export function GameShell() {
   const showHud = phase === "running" || phase === "paused" || phase === "caught";
   const needsName = !playerName.trim();
   const btnEstilo = estiloBotoes(settings);
-  /** quantas missões do dia já estão concluídas (badge do menu) */
   const missionsDone = missoes.filter((m) => estaConcluida(m, missionProgress)).length;
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-[var(--lrs-bg)] select-none">
       <canvas ref={canvasRef} aria-label="Pista do jogo Luiza Run Surfs" className="block h-full w-full touch-none" />
 
-      {/* textos flutuantes (+10, +100, vida...) */}
       <div className="pointer-events-none absolute inset-x-0 top-[38%] z-20 flex flex-col items-center gap-1">
         {floats.map((f) => (
           <span
@@ -907,7 +855,6 @@ export function GameShell() {
               onClose={() => abrirPainel("settings")}
             />
           </Frame>
-          {/* prévia ao vivo: as setas de verdade, por cima do painel */}
           <div
             className="pointer-events-none absolute z-40 grid grid-cols-4 gap-2 px-2"
             style={btnEstilo.caixa}
@@ -943,7 +890,6 @@ export function GameShell() {
             onDesbloquearTudo={adminLiberarTudo}
             onResetProgresso={resetProgress}
             onReiniciarSeed={startComSeed}
-            // durante a partida o Fechar volta para a pausa; no menu volta às configurações
             onClose={() => abrirPainel(phase === "paused" || phase === "running" ? "none" : "settings")}
           />
         </Frame>

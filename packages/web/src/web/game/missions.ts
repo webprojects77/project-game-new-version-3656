@@ -1,15 +1,5 @@
-/**
- * Missões diárias — 3 por dia, sorteadas a partir da data (todo mundo que
- * joga no mesmo dia pega as mesmas). Recompensa de 5.000 a 15.000 moedas,
- * creditada automaticamente no cofrinho quando a missão fecha.
- *
- * O progresso vive no localStorage e zera sozinho quando vira o dia.
- */
-
 export const MISSIONS_KEY = "lrs.missions";
 
-/** "acumula" soma o resultado de todas as corridas do dia;
- *  "melhor" olha só a melhor corrida isolada. */
 export type MissionMode = "acumula" | "melhor";
 
 export type MissionKind = "moedas" | "distancia" | "pontos" | "combo" | "especiais" | "corridas";
@@ -25,15 +15,11 @@ export interface Mission {
 }
 
 export interface MissionProgress {
-  /** data (YYYY-MM-DD) das missões guardadas */
   dia: string;
-  /** progresso atual por id de missão */
   feito: Record<string, number>;
-  /** ids das missões já pagas */
   pagas: string[];
 }
 
-/** Resultado de uma corrida, na medida que as missões precisam. */
 export interface RunSummary {
   score: number;
   distance: number;
@@ -46,7 +32,6 @@ interface Modelo {
   kind: MissionKind;
   mode: MissionMode;
   icone: string;
-  /** texto com {alvo} trocado pelo número já formatado */
   texto: string;
   alvos: number[];
   recompensa: number;
@@ -103,14 +88,12 @@ const MODELOS: Modelo[] = [
   },
 ];
 
-/** Data local no formato YYYY-MM-DD (o dia vira à meia-noite do aparelho). */
 export function hoje(d = new Date()): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-/** Gerador pseudoaleatório simples e estável a partir de uma string. */
 function semente(str: string) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) {
@@ -124,7 +107,6 @@ function semente(str: string) {
   };
 }
 
-/** As 3 missões do dia — sempre as mesmas para a mesma data. */
 export function missoesDoDia(dia = hoje()): Mission[] {
   const rand = semente(dia);
   const pool = [...MODELOS];
@@ -167,7 +149,6 @@ export function salvarProgresso(p: MissionProgress) {
   try {
     localStorage.setItem(MISSIONS_KEY, JSON.stringify(p));
   } catch {
-    /* localStorage cheio ou bloqueado: missões só não persistem */
   }
 }
 
@@ -190,13 +171,10 @@ function valorDaCorrida(kind: MissionKind, run: RunSummary): number {
 
 export interface MissionUpdate {
   progresso: MissionProgress;
-  /** missões que fecharam agora nesta corrida */
   concluidas: Mission[];
-  /** moedas a creditar no cofrinho */
   recompensa: number;
 }
 
-/** Aplica o resultado de uma corrida no progresso do dia. */
 export function aplicarCorrida(
   missoes: Mission[],
   atual: MissionProgress,

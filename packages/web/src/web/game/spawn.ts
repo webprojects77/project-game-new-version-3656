@@ -3,7 +3,6 @@ import { Sorteio } from "./random";
 export type ObstacleType = "low" | "high" | "block" | "ride";
 export type ItemPlanejado = "coin" | "heart" | "boost" | "special";
 
-/** Regras da pista reunidas para testar sem WebGL. */
 export const SPAWN = {
   dificuldadeMetros: 2600,
   moedasAte: 0.74,
@@ -37,7 +36,6 @@ export interface LinhaPlanejada {
   distanciaProxima: number;
 }
 
-/** Cada instância pertence a uma corrida; histórico não vaza entre jogadores. */
 export class PlanejadorPista {
   private ultimo: LinhaPlanejada | null = null;
   private repeticoesTipo = 0;
@@ -63,7 +61,6 @@ export class PlanejadorPista {
       : ["low", "high", "block", "low", "block", "ride"];
     const candidatos = tipos.filter((t) => {
       if (this.repeticoesTipo >= SPAWN.maxRepeticoes && t === this.ultimo?.type) return false;
-      // Não pede pulo imediatamente depois de slide enquanto a corrida é lenta.
       return !(d < 0.5 && this.ultimo?.type === "high" && t === "low");
     });
     const type = this.rng.escolher(candidatos);

@@ -1,12 +1,3 @@
-/**
- * Skins da Luiza — todas são o MESMO boneco 3D low poly, mudando só as cores
- * de pele, cabelo, blusa, calça e tênis.
- *
- * Progressão (specs visuais v2): camadas de raridade em vez de preço avulso.
- *  - Comum: só moedas
- *  - Rara / Épica: moedas + recorde mínimo
- *  - Especial: só com o item especial (moldura de foto) coletado na pista
- */
 export type SkinKey =
   | "classica"
   | "esportiva"
@@ -35,13 +26,9 @@ export interface SkinInfo {
   name: string;
   desc: string;
   tier: SkinTier;
-  /** cor da borda do card na tela de seleção */
   tierColor: string;
-  /** custo em moedas (0 = não se compra) */
   cost: number;
-  /** recorde pessoal mínimo em pontos */
   record: number;
-  /** quantos itens especiais (moldura de foto) são necessários */
   specials: number;
   body: BodyPalette;
 }
@@ -180,7 +167,6 @@ export const SKINS: SkinInfo[] = [
       detail: "#29D9FF",
     },
   },
-  // --- exclusivas da conta admin: variações do policial e do cachorro ---
   {
     key: "policial",
     name: "Luiza Policial",
@@ -231,13 +217,10 @@ export interface Progress {
   coins: number;
   best: number;
   specials: number;
-  /** conta admin: libera tudo, inclusive as skins exclusivas */
   admin?: boolean;
 }
 
-/** Uma skin está liberada quando bate TODOS os requisitos da camada dela. */
 export function isUnlocked(skin: SkinInfo, p: Progress) {
-  // a conta admin tem acesso irrestrito a todas as skins
   if (p.admin) return true;
   if (skin.tier === "admin") return false;
   if (skin.tier === "padrao") return true;
@@ -245,7 +228,6 @@ export function isUnlocked(skin: SkinInfo, p: Progress) {
   return p.coins >= skin.cost && p.best >= skin.record;
 }
 
-/** Texto do requisito que falta, já formatado em pt-BR. */
 export function requirementLabel(skin: SkinInfo, p: Progress): string[] {
   if (p.admin || skin.tier === "padrao") return [];
   if (skin.tier === "admin") return ["só na conta admin"];

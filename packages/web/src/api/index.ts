@@ -11,12 +11,10 @@ export const router = {
 };
 
 export type AppRouter = typeof router;
-/** Typed client for the router — used by the web and mobile api clients. */
 export type AppRouterClient = RouterClient<AppRouter>;
 
 const app = createApp(router);
 
-// login com conta Google (Better Auth + login gerenciado da Runable)
 app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 
 export default protegerOrigens(app);

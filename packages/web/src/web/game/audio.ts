@@ -1,14 +1,4 @@
-/**
- * Som do jogo (specs visuais v2).
- *
- * - 6 trilhas, uma por área, com crossfade de ~1,5 s na troca de fase e
- *   pitch subindo junto com a velocidade da Luiza.
- * - Efeitos com pool de 3 vozes cada, para nunca cortar o som anterior.
- * - Volumes de música e efeitos separados e salvos no aparelho.
- */
-
 export type SfxKey =
-  // ação da Luiza
   | "jump"
   | "slide"
   | "coin"
@@ -19,12 +9,10 @@ export type SfxKey =
   | "vidaperdida"
   | "combosobe"
   | "recorde"
-  // power-ups
   | "powercoletar"
   | "powerativar"
   | "powerfim"
   | "escudoquebra"
-  // mundo / perseguição
   | "cop"
   | "apito"
   | "sirene"
@@ -32,13 +20,11 @@ export type SfxKey =
   | "transicao"
   | "contagem"
   | "gameover"
-  // interface
   | "clique"
   | "abrirtela"
   | "erro"
   | "desbloqueio";
 
-/** Volume base de cada efeito (multiplicado pelo volume geral de SFX). */
 const SFX_VOLUME: Record<SfxKey, number> = {
   jump: 0.45,
   slide: 0.5,
@@ -67,7 +53,6 @@ const SFX_VOLUME: Record<SfxKey, number> = {
   desbloqueio: 0.7,
 };
 
-/** Trilha de cada área, na mesma ordem dos biomas do motor. */
 const TRACKS = [
   "musica_bairro",
   "musica_escola",
@@ -82,7 +67,6 @@ const MUSIC_KEY = "lrs.vol.music";
 const SFX_KEY = "lrs.vol.sfx";
 
 const MUSIC_BASE = 0.32;
-/** duração do crossfade entre trilhas, em ms */
 const FADE_MS = 1500;
 
 function readVolume(key: string, fallback: number) {
@@ -91,7 +75,6 @@ function readVolume(key: string, fallback: number) {
 }
 
 export class GameAudio {
-  /** dois canais que se alternam para fazer o crossfade */
   private decks: [HTMLAudioElement, HTMLAudioElement];
   private deckAtivo = 0;
   private trackAtual = -1;
@@ -163,14 +146,12 @@ export class GameAudio {
     return this.muted;
   }
 
-  /** Volume da música (0 a 1). */
   setMusicVolume(v: number) {
     this.musicVol = Math.min(1, Math.max(0, v));
     localStorage.setItem(MUSIC_KEY, String(this.musicVol));
     if (this.fadeTimer === null) this.deck.volume = this.alvoVolume();
   }
 
-  /** Volume dos efeitos (0 a 1). */
   setSfxVolume(v: number) {
     this.sfxVol = Math.min(1, Math.max(0, v));
     localStorage.setItem(SFX_KEY, String(this.sfxVol));
@@ -179,10 +160,6 @@ export class GameAudio {
     }
   }
 
-  /**
-   * Toca a trilha de uma área. Se já houver música tocando, faz crossfade
-   * de 1,5 s entre o canal antigo e o novo.
-   */
   playTrack(area: number) {
     const idx = ((area % TRACKS.length) + TRACKS.length) % TRACKS.length;
     this.musicWanted = true;
@@ -218,7 +195,6 @@ export class GameAudio {
     }, 50);
   }
 
-  /** Retoma a trilha atual (ou a primeira, se ainda não tiver começado). */
   playMusic() {
     if (this.trackAtual < 0) {
       this.playTrack(0);
@@ -235,7 +211,6 @@ export class GameAudio {
     for (const d of this.decks) d.pause();
   }
 
-  /** Pitch da música acompanha a velocidade da corrida. */
   setMusicRate(rate: number) {
     this.rate = Math.min(1.35, Math.max(0.85, rate));
     for (const d of this.decks) d.playbackRate = this.rate;
@@ -252,7 +227,6 @@ export class GameAudio {
       audio.currentTime = 0;
       void audio.play().catch(() => {});
     } catch {
-      /* ignora */
     }
   }
 

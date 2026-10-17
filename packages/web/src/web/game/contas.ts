@@ -1,11 +1,3 @@
-/**
- * Contas salvas neste aparelho.
- *
- * A conta ativa usa as chaves normais do localStorage (lrs.best, lrs.coins.total...).
- * As outras contas ficam guardadas em `lrs.contas` como uma "foto" dessas chaves.
- * Trocar de conta = guardar a foto da ativa e copiar a foto da outra de volta.
- * Assim nenhuma conta é apagada quando você entra em outra.
- */
 import { MISSIONS_KEY } from "./missions";
 
 export const NAME_KEY = "lrs.name";
@@ -20,7 +12,6 @@ export const NAME_AT_KEY = "lrs.name.lastChange";
 
 const CONTAS_KEY = "lrs.contas";
 
-/** Tudo o que pertence a uma conta (configurações de som/tela são do aparelho). */
 const CHAVES_DA_CONTA = [
   NAME_KEY,
   PASS_KEY,
@@ -36,7 +27,6 @@ const CHAVES_DA_CONTA = [
 
 type Foto = Record<string, string>;
 
-/** Lê um número salvo; se estiver vazio ou corrompido, devolve o padrão. */
 export function lerNumero(key: string, padrao = 0): number {
   const raw = localStorage.getItem(key);
   if (raw === null || raw.trim() === "") return padrao;
@@ -71,7 +61,6 @@ function gravarContas(contas: Record<string, Foto>) {
 
 const chave = (nome: string) => nome.trim().toLowerCase();
 
-/** Copia a conta ativa para a lista de contas salvas. */
 export function guardarContaAtiva() {
   const nome = localStorage.getItem(NAME_KEY);
   if (!nome) return;
@@ -85,7 +74,6 @@ export function guardarContaAtiva() {
   gravarContas(contas);
 }
 
-/** Nomes de todas as contas deste aparelho (inclui a ativa). */
 export function nomesDasContas(): string[] {
   guardarContaAtiva();
   return Object.values(lerContas())
@@ -98,7 +86,6 @@ export function contaExiste(nome: string): boolean {
   return Object.prototype.hasOwnProperty.call(lerContas(), chave(nome));
 }
 
-/** Senha guardada da conta (ativa ou salva). */
 export function senhaDaConta(nome: string): string | null {
   if (chave(localStorage.getItem(NAME_KEY) ?? "") === chave(nome)) {
     return localStorage.getItem(PASS_KEY);
@@ -106,12 +93,10 @@ export function senhaDaConta(nome: string): string | null {
   return lerContas()[chave(nome)]?.[PASS_KEY] ?? null;
 }
 
-/** Limpa as chaves da conta ativa (a foto dela já deve estar guardada). */
 function limparAtiva() {
   for (const k of CHAVES_DA_CONTA) localStorage.removeItem(k);
 }
 
-/** Torna ativa uma conta salva. Devolve false se ela não existe. */
 export function ativarConta(nome: string): boolean {
   const foto = lerContas()[chave(nome)];
   if (!foto) return false;
@@ -121,7 +106,6 @@ export function ativarConta(nome: string): boolean {
   return true;
 }
 
-/** Começa uma conta nova do zero (guardando a anterior antes). */
 export function novaConta(nome: string, senha: string, admin: boolean) {
   guardarContaAtiva();
   limparAtiva();
@@ -131,7 +115,6 @@ export function novaConta(nome: string, senha: string, admin: boolean) {
   guardarContaAtiva();
 }
 
-/** Muda o nome da conta ativa sem perder a foto dela na lista. */
 export function renomearContaAtiva(antigo: string, novo: string) {
   const contas = lerContas();
   delete contas[chave(antigo)];

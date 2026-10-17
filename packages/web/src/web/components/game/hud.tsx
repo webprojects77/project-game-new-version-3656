@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { HudState } from "../../game/engine3d";
 
-/** Coração verde (regra das specs visuais v2). O estado "quebrando" fica
- *  cinza e rachado por um instante antes de sumir de vez. */
 function Heart({ filled, breaking }: { filled: boolean; breaking: boolean }) {
   const fill = filled
     ? "var(--lrs-lime)"
@@ -32,7 +30,6 @@ function Heart({ filled, breaking }: { filled: boolean; breaking: boolean }) {
   );
 }
 
-/** Cor da barra do policial: verde (longe) → amarelo → vermelho (colado). */
 function copColor(heat: number) {
   if (heat < 0.4) return "var(--lrs-lime)";
   if (heat < 0.75) return "var(--lrs-gold)";
@@ -55,7 +52,6 @@ export function Hud({
   const boostPct = hud.boostMax > 0 ? Math.min(100, (hud.boostMs / hud.boostMax) * 100) : 0;
   const copPct = Math.round(Math.min(1, Math.max(0, hud.copHeat)) * 100);
 
-  // corações que acabaram de ser perdidos ficam "quebrando" por um instante
   const prevLives = useRef(hud.lives);
   const [breaking, setBreaking] = useState<number | null>(null);
   useEffect(() => {
@@ -71,7 +67,6 @@ export function Hud({
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
-      {/* ---- superior esquerdo: pontos, distância e combo ---- */}
       <div className="absolute top-3 left-3 sm:top-5 sm:left-5">
         <div className="lrs-panel rounded-2xl px-3 py-2 sm:px-4 sm:py-3">
           <div className="lrs-display lrs-nums text-2xl leading-none font-extrabold text-[var(--lrs-gold)] sm:text-4xl">
@@ -88,7 +83,6 @@ export function Hud({
         )}
       </div>
 
-      {/* ---- topo central: proximidade do policial + área atual ---- */}
       <div className="absolute top-3 left-1/2 w-36 -translate-x-1/2 sm:top-5 sm:w-56">
         <div className="lrs-panel rounded-2xl px-3 py-2">
           <div className="flex items-center gap-2">
@@ -109,7 +103,6 @@ export function Hud({
         </div>
       </div>
 
-      {/* ---- superior direito: vidas, pausa e mudo rápido ---- */}
       <div className="absolute top-3 right-3 flex flex-col items-end gap-2 sm:top-5 sm:right-5">
         <div className="lrs-panel flex items-center gap-1 rounded-2xl px-2.5 py-1.5 sm:px-3 sm:py-2">
           {[0, 1, 2].map((i) => (
@@ -141,7 +134,6 @@ export function Hud({
         </div>
       </div>
 
-      {/* ---- lateral esquerda: power-ups ativos com barra de tempo ---- */}
       {hud.powers.length > 0 && (
         <div className="absolute top-1/2 left-3 flex -translate-y-1/2 flex-col gap-2 sm:left-5">
           {hud.powers.map((p) => {
@@ -168,7 +160,6 @@ export function Hud({
         </div>
       )}
 
-      {/* ---- inferior esquerdo: turbo com barra circular ---- */}
       {boostPct > 0 && (
         <div className="absolute bottom-16 left-3 sm:bottom-8 sm:left-5">
           <div className="relative h-16 w-16 sm:h-20 sm:w-20">
@@ -190,7 +181,6 @@ export function Hud({
         </div>
       )}
 
-      {/* ---- canto inferior extremo: slot da Segunda Chance ---- */}
       {hud.chance && (
         <div className="absolute bottom-3 left-3 sm:bottom-4 sm:left-5">
           <div
@@ -207,7 +197,6 @@ export function Hud({
         </div>
       )}
 
-      {/* ---- inferior direito: moedas da corrida ---- */}
       <div className="absolute right-3 bottom-16 flex flex-col items-end gap-1.5 sm:right-5 sm:bottom-8">
         <div className="lrs-panel lrs-nums lrs-display rounded-2xl px-3 py-1.5 text-lg font-bold text-[var(--lrs-gold)]">
           🪙 {hud.coins.toLocaleString("pt-BR")}

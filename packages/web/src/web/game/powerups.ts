@@ -1,9 +1,3 @@
-/**
- * Power-ups universais (tabela do documento de specs visuais).
- *
- * Cada power-up tem: ícone para a HUD, cor, duração e uma malha 3D low poly
- * que aparece flutuando na pista. O motor usa intervalos de 95–140 segundos.
- */
 import * as THREE from "three";
 import { PALETTE } from "./palette";
 
@@ -14,9 +8,7 @@ export interface PowerInfo {
   nome: string;
   icone: string;
   cor: string;
-  /** duração em ms; 0 = efeito instantâneo ou guardado em slot */
   duracao: number;
-  /** peso no sorteio (quanto maior, mais comum) */
   peso: number;
   descricao: string;
 }
@@ -98,7 +90,6 @@ export const POWERS: Record<PowerKind, PowerInfo> = {
 
 const ORDEM: PowerKind[] = ["iman", "escudo", "x2", "pulo", "turbo", "fuga", "fantasma", "chance"];
 
-/** Sorteia por peso, sem repetir o anterior, usando a fonte da corrida. */
 export function sortearPower(rng: () => number = Math.random, anterior?: PowerKind): PowerKind {
   const candidatos = ORDEM.filter((k) => k !== anterior);
   const total = candidatos.reduce((s, k) => s + POWERS[k].peso, 0);
@@ -120,7 +111,6 @@ function mat(color: string, emissive = 0.7) {
   });
 }
 
-/** Cápsula que carrega o power-up: esfera translúcida + símbolo dentro. */
 export function makePowerMesh(kind: PowerKind): THREE.Object3D {
   const info = POWERS[kind];
   const g = new THREE.Group();
@@ -144,7 +134,6 @@ export function makePowerMesh(kind: PowerKind): THREE.Object3D {
 
   switch (kind) {
     case "iman": {
-      // ferradura: dois braços e uma base
       for (const sx of [-1, 1]) {
         const braco = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.4, 0.12), m);
         braco.position.set(sx * 0.14, 0.08, 0);
@@ -221,7 +210,6 @@ export function makePowerMesh(kind: PowerKind): THREE.Object3D {
   return g;
 }
 
-/** Gira a cápsula e faz o símbolo pulsar. */
 export function animatePower(obj: THREE.Object3D, baseY: number, t: number) {
   obj.position.y = baseY + Math.sin(t * 2.6 + obj.position.z * 0.3) * 0.18;
   obj.rotation.y = t * 1.4;

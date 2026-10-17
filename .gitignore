@@ -1,7 +1,5 @@
-# dependencies
 node_modules
 
-# output
 out
 dist
 dist-electron
@@ -9,19 +7,15 @@ release
 web-build
 *.tgz
 
-# code coverage
 coverage
 *.lcov
 
-# logs
 logs
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
-# local databases
 *.db
 
-# dotenv environment variable files
 .env
 .env.development.local
 .env.test.local
@@ -29,23 +23,18 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .env.local
 .env*.local
 
-# caches
 .eslintcache
 .cache
 *.tsbuildinfo
 .turbo
 
-# IntelliJ based IDEs
 .idea
 
-# macOS
 .DS_Store
 
-# Expo
 .expo/
 expo-env.d.ts
 
-# Native
 .kotlin/
 *.orig.*
 *.jks
@@ -55,20 +44,11 @@ expo-env.d.ts
 *.mobileprovision
 *.pem
 
-# Metro
 .metro-health-check*
 
-# debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# generated native folders
 ios
 android
-
-# scripts (local-only provisioning)
-scripts/
-!packages/mobile/scripts/
-packages/mobile/scripts/*
-!packages/mobile/scripts/generate-ios-certs.py

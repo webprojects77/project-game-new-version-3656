@@ -1,15 +1,5 @@
 import { Platform } from "react-native";
 
-/**
- * App color tokens. Recolor these to brand the app — every screen and component
- * reads from here via `useColors()` (see `hooks/use-colors.ts`), so changing a
- * value here updates the whole app in both light and dark mode.
- *
- * The token names mirror the web app's design tokens (`packages/web/src/web/styles.css`)
- * so the two platforms share one vocabulary: `background`, `foreground`, `card`,
- * `primary`, `muted`, `border`, etc. Values are plain hex/rgba strings — React
- * Native's StyleSheet does not support CSS color functions like `oklch()`.
- */
 export const Colors = {
   light: {
     background: "#FFFFFF",
@@ -52,10 +42,6 @@ export const Colors = {
 export type ColorScheme = keyof typeof Colors;
 export type ThemeColors = (typeof Colors)[ColorScheme];
 
-/**
- * Platform-appropriate font families. Use for `fontFamily` in styles, or load a
- * custom font with `useFonts` from `expo-font` and reference it here.
- */
 export const Fonts = Platform.select({
   ios: {
     sans: "system-ui",

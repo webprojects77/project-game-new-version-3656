@@ -110,9 +110,6 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
-/* ---------------------------------------------------------------
-   Luiza Run Surfs — tokens do jogo (ver design.md)
---------------------------------------------------------------- */
 :root {
   --lrs-bg: #1a1030;
   --lrs-surface: #241041;
@@ -204,19 +201,15 @@
   .lrs-pop {
     animation: lrs-pop 0.35s cubic-bezier(0.22, 1.2, 0.36, 1) both;
   }
-  /* aviso que desce do topo da tela */
   .lrs-drop {
     animation: lrs-drop 0.3s cubic-bezier(0.22, 1.2, 0.36, 1) both;
   }
-  /* combo pulsando */
   .lrs-pulse {
     animation: lrs-pulse 0.6s ease-in-out infinite;
   }
-  /* coração perdido: treme e murcha antes de virar vazio */
   .lrs-heart-break {
     animation: lrs-heart-break 0.65s ease-out both;
   }
-  /* moedas entrando no cofrinho na tela de Game Over */
   .lrs-coin-fly {
     animation: lrs-coin-fly 0.7s ease-in both;
   }

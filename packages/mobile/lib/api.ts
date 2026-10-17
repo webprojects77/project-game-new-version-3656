@@ -10,8 +10,6 @@ const link = new RPCLink({
   url: `${baseUrl}/api/rpc`,
 });
 
-/** Direct typed client: await client.ping() */
 export const client: AppRouterClient = createORPCClient(link);
 
-/** TanStack Query helpers: useQuery(orpc.ping.queryOptions()) */
 export const orpc = createTanstackQueryUtils(client);

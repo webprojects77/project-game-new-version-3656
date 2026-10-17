@@ -4,11 +4,6 @@ import { runableManagedAuth } from "@runablehq/managed-auth/server";
 import { db } from "./database";
 import { origensPermitidas } from "./security/origins";
 
-/**
- * Login do Luiza Run Surfs.
- * Só existe UMA forma de entrar: conta Google (login gerenciado da Runable).
- * Sem conta Google o jogo roda em modo convidado e o resultado NÃO vai para o placar.
- */
 export const auth = betterAuth({
   basePath: "/api/auth",
   baseURL: process.env.WEBSITE_URL,

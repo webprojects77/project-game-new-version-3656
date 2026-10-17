@@ -3,10 +3,6 @@ import { makeModelo, type ModeloKey } from "./models";
 import { PALETTE } from "./palette";
 import { rand } from "./visual-random";
 
-/**
- * Props de cenário exclusivos de cada área (ficam nas calçadas, sem
- * atrapalhar a corrida). São eles que dão a "cara" de cada fase.
- */
 export function construirProp(biomeIdx: number): THREE.Object3D {
   const group = new THREE.Group();
   const mat = (color: string, emissive = 0) =>
@@ -17,14 +13,12 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
       roughness: 0.7,
     });
 
-  // peças modeladas em 3D que ficam na calçada de algumas áreas
   const modelado: (ModeloKey | undefined)[] = ["casinha", "cone", "placa", undefined, undefined, undefined];
   const alvo = modelado[biomeIdx];
   if (alvo && Math.random() < 0.6) {
     const peca = makeModelo(alvo);
     if (peca) {
       group.add(peca);
-      // casa/placa/cone modelados ficam retos e rente à calçada
       group.userData.alinhado = true;
       return group;
     }
@@ -33,7 +27,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
   switch (biomeIdx) {
     case 0: {
       if (Math.random() < 0.5) {
-        // trampolim do quintal
         for (const sx of [-1, 1]) {
           for (const sz of [-1, 1]) {
             const pe = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.8, 0.14), mat("#9AA3AE"));
@@ -49,7 +42,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
         borda.rotation.x = Math.PI / 2;
         group.add(borda);
       } else {
-        // carrinho de rolimã
         const tabua = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.12, 1.6), mat("#B3651F"));
         tabua.position.y = 0.34;
         group.add(tabua);
@@ -66,7 +58,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
     }
     case 1: {
       if (Math.random() < 0.5) {
-        // fila de mochilas encostadas no muro
         for (let i = 0; i < 4; i++) {
           const cor = ["#E04E7A", "#2F6FB3", "#D8C36A", "#3AC98A"][i];
           const mochila = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.62, 0.34), mat(cor));
@@ -77,7 +68,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
           group.add(bolso);
         }
       } else {
-        // cones de educação física
         for (let i = 0; i < 3; i++) {
           const cone = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.7, 8), mat("#FF7A1F", 0.15));
           cone.position.set(rand(-0.4, 0.4), 0.35, i * 1.1);
@@ -91,7 +81,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
     }
     case 2: {
       if (Math.random() < 0.5) {
-        // banca de jornal virada
         const corpo = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.4, 1.2), mat("#5A3A8C"));
         corpo.position.set(0, 0.7, 0);
         corpo.rotation.z = 0.42;
@@ -107,7 +96,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
           group.add(jornal);
         }
       } else {
-        // poste caído com a luz ainda piscando
         const poste = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 6, 8), mat("#9AA3AE"));
         poste.position.set(0, 0.6, 0);
         poste.rotation.x = Math.PI / 2 - 0.12;
@@ -120,7 +108,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
     }
     case 3: {
       if (Math.random() < 0.5) {
-        // playground: escorregador + balanço
         const escada = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.2, 0.2), mat("#2A6B8C"));
         escada.position.set(0, 1.1, -0.9);
         group.add(escada);
@@ -135,7 +122,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
         assento.position.set(1.6, 0.6, 0);
         group.add(assento);
       } else {
-        // lago com reflexo
         const agua = new THREE.Mesh(
           new THREE.CircleGeometry(2.6, 18),
           new THREE.MeshStandardMaterial({
@@ -162,7 +148,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
     case 4: {
       const r = Math.random();
       if (r < 0.4) {
-        // coqueiro de tronco curvo
         for (let i = 0; i < 6; i++) {
           const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.16 - i * 0.012, 0.2 - i * 0.012, 0.9, 7), mat("#8A6534"));
           seg.position.set(Math.sin(i * 0.28) * 0.55, 0.45 + i * 0.85, 0);
@@ -181,7 +166,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
           group.add(coco);
         }
       } else if (r < 0.75) {
-        // guarda-sol listrado + cadeira na areia
         const poste = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 8), mat("#B98A4A"));
         poste.position.y = 1.3;
         group.add(poste);
@@ -199,7 +183,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
         espreguicadeira.position.set(1.5, 0.4, 0);
         group.add(espreguicadeira);
       } else {
-        // quiosque de coco
         const balcao = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.2, 1.4), mat("#E8D2A0"));
         balcao.position.y = 0.6;
         group.add(balcao);
@@ -221,7 +204,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
     default: {
       const r = Math.random();
       if (r < 0.4) {
-        // vitrine iluminada com manequim
         const caixa = new THREE.Mesh(new THREE.BoxGeometry(3, 3.2, 1.2), mat("#FFFFFF"));
         caixa.position.y = 1.6;
         group.add(caixa);
@@ -235,7 +217,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
         vestido.position.set(0, 0.75, 0.8);
         group.add(vestido);
       } else if (r < 0.7) {
-        // planta em vaso + banco de mármore
         const vaso = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.32, 0.7, 8), mat("#CFA94A", 0.2));
         vaso.position.y = 0.35;
         group.add(vaso);
@@ -254,7 +235,6 @@ export function construirProp(biomeIdx: number): THREE.Object3D {
           group.add(pe);
         }
       } else {
-        // painel de luz gigante
         const painel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3.4, 2.2), mat("#D8E6F2", 0.5));
         painel.position.y = 2.2;
         group.add(painel);

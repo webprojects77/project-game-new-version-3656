@@ -1,10 +1,3 @@
-/**
- * Luiza Run Surfs — motor 3D (three.js).
- *
- * Mundo em 3 faixas, câmera atrás e acima da Luiza (estilo Subway Surfers).
- * Personagens e itens são malhas 3D; obstáculos e cenário combinam geometria
- * em código com modelos GLB. Sorteios da pista são isolados dos efeitos visuais.
- */
 import * as THREE from "three";
 import { GameAudio } from "./audio";
 import { type CharPose, Dog, Humanoid, makeCop } from "./characters";
@@ -29,30 +22,19 @@ export type Phase = "menu" | "running" | "paused" | "caught" | "over";
 export type InputAction = "left" | "right" | "jump" | "slide";
 export type NotifyKind = "recorde" | "combo" | "especial" | "fase" | "power";
 
-/** Chaves usadas pelo painel admin para forçar o spawn de uma peça. */
 export type SpawnKey = ObstacleType;
 
-/** Interruptores da conta admin (nenhum liga sozinho numa conta normal). */
 export interface AdminFlags {
-  /** god mode: invencível + multiplicador alto */
   god: boolean;
-  /** invencibilidade avulsa */
   invuln: boolean;
-  /** atravessa obstáculos e faixas travadas */
   noclip: boolean;
-  /** sai do trilho das 3 faixas e flutua */
   fly: boolean;
-  /** câmera solta do personagem */
   freeCam: boolean;
-  /** desenha as caixas de colisão */
   hitbox: boolean;
-  /** velocidade do jogo (0.2 = câmera lenta, 3 = acelerado) */
   timeScale: number;
-  /** multiplicador de moedas e pontuação */
   multiplier: number;
 }
 
-/** Números do overlay de debug da conta admin. */
 export interface DebugInfo {
   seed: number;
   fps: number;
@@ -66,7 +48,6 @@ export interface DebugInfo {
   area: string;
 }
 
-/** Power-up ativo mostrado na HUD (ícone + barra de tempo restante). */
 export interface ActivePower {
   key: PowerKind;
   icone: string;
@@ -88,13 +69,9 @@ export interface HudState {
   copHeat: number;
   combo: number;
   comboTimer: number;
-  /** power-ups com duração, em ordem de coleta */
   powers: ActivePower[];
-  /** escudo guardado (aguenta uma batida) */
   shield: boolean;
-  /** segunda chance guardada no slot separado */
   chance: boolean;
-  /** área/fase atual (0 a 5) */
   area: number;
   areaName: string;
 }
@@ -113,9 +90,6 @@ export interface FloatingText {
   color: string;
 }
 
-// ---------------------------------------------------------------------------
-// Constantes do mundo (1 unidade ≈ 1 metro)
-// ---------------------------------------------------------------------------
 const LANE_W = 2.3;
 const LANES = [-LANE_W, 0, LANE_W];
 const ROAD_W = 9;
@@ -128,15 +102,11 @@ const COYOTE = 0.1;
 const BUFFER = 0.16;
 
 const SPEED_START = 14;
-/** teto de velocidade: subiu bastante para o jogo não "empacar" fácil */
 const SPEED_MAX = 48;
 const SPEED_RAMP = 0.0055;
 
-/** impulso que a rampa/escada rolante dá (sobe ~2 blocos de altura) */
 const RAMP_LAUNCH = 16.2;
-/** altura do teto do ônibus: dá para passar por cima com o duplo pulo */
 const ONIBUS_TOP = 2.9;
-/** comprimento do "trem" (carro/ônibus) que tranca a faixa */
 const TREM_LEN = 9;
 
 const SPAWN_Z = -135;
@@ -145,46 +115,32 @@ const DESPAWN_Z = 16;
 const PLAYER_H = 1.85;
 const SLIDE_H = 0.85;
 
-/** Distância (em metros) de cada fase antes de trocar de bioma. */
 const BIOME_LEN = 2200;
 
-/** Combo: tempo (s) sem coletar nada antes de o multiplicador cair. */
 const COMBO_WINDOW = 3.2;
 const COMBO_MAX = 8;
-/** Duração do power-up de velocidade, em ms. */
 const BOOST_MS = 5000;
 
-
-/**
- * low = pular · high = deslizar · block = desviar de faixa
- * ride = escada rolante do shopping (sobe em cima pulando)
- */
 interface Obstacle {
   type: ObstacleType;
   lane: number;
   z: number;
   group: THREE.Object3D;
   hit: boolean;
-  /** altura a partir da qual a Luiza passa por cima (Infinity = não passa) */
   topo: number;
-  /** rampa/escada rolante: em vez de bater, lança a Luiza para cima */
   rampa: boolean;
-  /** carro/ônibus: vem numa faixa fixa e tranca a troca de faixa */
   trem: boolean;
 }
 
 interface Item {
   kind: ItemKind | "power";
-  /** qual power-up está dentro da cápsula (só para kind === "power") */
   power?: PowerKind;
   lane: number;
   z: number;
   y: number;
   obj: THREE.Object3D;
   taken: boolean;
-  /** quando coletado, o item "salta" em direção à HUD antes de sumir */
   fly: number;
-  /** posição x atual (o ímã puxa as moedas para a Luiza) */
   x: number;
 }
 
@@ -202,7 +158,6 @@ export class Game3D {
   private onFloat: (text: FloatingText) => void;
   private onNotify: (kind: NotifyKind, text: string) => void;
 
-  // three.js
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera;
@@ -215,7 +170,6 @@ export class Game3D {
   private particles!: THREE.Points;
   private particleData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number }[] = [];
 
-  // bioma / fases
   private skyTextures: THREE.Texture[] = [];
   private hemi!: THREE.HemisphereLight;
   private sun!: THREE.DirectionalLight;
@@ -224,24 +178,18 @@ export class Game3D {
   private neons: THREE.Mesh[] = [];
   private biomeIdx = 0;
   private gates: { group: THREE.Object3D; z: number }[] = [];
-  /** props de cenário exclusivos da área (coqueiro, trampolim, vitrine...) */
   private props: { group: THREE.Object3D; z: number }[] = [];
-  /** distância até o próximo prop de cenário */
   private nextProp = 24;
 
-  // cachorro 3D low poly
   private dog!: Dog;
   private dogZ = 8;
   private dogX = 1.6;
   private barkTimer = 2;
 
-  /** skin escolhida na tela de personagens */
   private skin: SkinKey = DEFAULT_SKIN;
 
-  // configurações do jogador
   private reduceFx = false;
   private vibrate = true;
-  /** recorde pessoal, usado para avisar "novo recorde" no meio da corrida */
   private best = 0;
   private beatRecord = false;
 
@@ -252,7 +200,6 @@ export class Game3D {
   private hudTimer = 0;
   private floatId = 0;
 
-  // estado da partida
   private lane = 1;
   private x = 0;
   private y = 0;
@@ -266,30 +213,19 @@ export class Game3D {
   private coins = 0;
   private specials = 0;
   private speed = SPEED_START;
-  // combo
   private combo = 1;
   private comboBest = 1;
   private comboHits = 0;
   private comboTimer = 0;
   private boost = 0;
-  // power-ups
-  /** tempo restante (ms) de cada power-up com duração */
   private powerTimers = new Map<PowerKind, number>();
-  /** escudo guardado: aguenta uma batida e estala */
   private shield = false;
-  /** segunda chance guardada (slot separado da HUD) */
   private chance = false;
-  /** o duplo pulo já foi usado neste pulo? */
   private usedDoubleJump = false;
-  /** bolha do escudo em volta da Luiza */
   private shieldMesh!: THREE.Mesh;
-  /** distância até o próximo power-up (1 a cada 95-140 s: item raro) */
   private nextPower = 0;
-  /** metros que ainda faltam para um coração poder aparecer de novo */
   private heartCooldown = 1200;
-  /** o item especial só pode aparecer 1 vez por partida */
   private specialSpawned = false;
-  /** contagem regressiva "3, 2, 1, Vai!" no início da partida */
   private countdown = 0;
   private countdownStep = 0;
   private invuln = 0;
@@ -297,13 +233,11 @@ export class Game3D {
   private hitFlash = 0;
   private caughtTimer = 0;
 
-  // policial
   private copZ = 6.2;
   private copX = -1.6;
   private copTargetZ = 6.2;
   private copSurge = 0;
 
-  // ---- conta admin / debug ----
   private admin: AdminFlags = {
     god: false,
     invuln: false,
@@ -314,16 +248,12 @@ export class Game3D {
     timeScale: 1,
     multiplier: 1,
   };
-  /** x livre do modo fly (fora das 3 faixas) */
   private flyX = 0;
-  /** quadros por segundo suavizados, para o overlay de debug */
   private fps = 60;
-  /** caixas de colisão desenhadas quando o admin liga o hitbox */
   private hitboxGroup = new THREE.Group();
   private hitboxTimer = 0;
   private freeCamPos = new THREE.Vector3(0, 6, 12);
 
-  // spawner
   private nextSpawn = 40;
   private seed = novaSeed();
   private planejador = new PlanejadorPista(this.seed);
@@ -350,7 +280,6 @@ export class Game3D {
     this.onFloat = opts.onFloat ?? (() => {});
     this.onNotify = opts.onNotify ?? (() => {});
 
-    // Se o aparelho/navegador não tiver WebGL, avisamos em vez de deixar tela branca.
     try {
       this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     } catch {
@@ -365,7 +294,6 @@ export class Game3D {
 
     this.scene.add(this.hitboxGroup);
     this.roadTex = makeRoadTexture();
-    // a cerquinha em .glb vai chegando em paralelo; até lá o jogo usa a de código
     carregarModelos();
     this.buildWorld();
     this.resize();
@@ -376,9 +304,6 @@ export class Game3D {
     this.raf = requestAnimationFrame(this.loop);
   }
 
-  // -------------------------------------------------------------------------
-  // construção do mundo
-  // -------------------------------------------------------------------------
   private buildWorld() {
     this.skyTextures = BIOMES.map((b) => makeSkyTexture(b.sky));
     this.scene.background = this.skyTextures[0];
@@ -393,7 +318,6 @@ export class Game3D {
     this.rim.position.set(-8, 6, 10);
     this.scene.add(this.rim);
 
-    // pista
     this.roadTex.repeat.set(1, ROAD_LEN / 9);
     const roadMat = new THREE.MeshStandardMaterial({ map: this.roadTex, roughness: 0.85, metalness: 0.05 });
     this.road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W, ROAD_LEN), roadMat);
@@ -401,7 +325,6 @@ export class Game3D {
     this.road.position.z = -ROAD_LEN / 2 + 20;
     this.scene.add(this.road);
 
-    // calçadas + neon nas laterais
     for (const side of [-1, 1] as const) {
       const walk = new THREE.Mesh(
         new THREE.BoxGeometry(3.4, 0.5, ROAD_LEN),
@@ -424,7 +347,6 @@ export class Game3D {
       this.neons.push(neon);
     }
 
-    // prédios laterais (pool reciclado)
     const buildingTextures = [makeBuildingTexture(320), makeBuildingTexture(190), makeBuildingTexture(45)];
     for (let i = 0; i < 26; i++) {
       const side: -1 | 1 = i % 2 === 0 ? -1 : 1;
@@ -440,13 +362,11 @@ export class Game3D {
       this.placeBuilding(building, -((i / 2) * 16 + rand(0, 8)));
     }
 
-    // Luiza + policial: bonecos 3D low poly (sem foto, sem billboard)
     this.player = new Humanoid(findSkin(this.skin).body, { ponytail: true });
     this.scene.add(this.player.group);
     this.cop = makeCop();
     this.scene.add(this.cop.group);
 
-    // bolha do escudo (fica invisível até o power-up ser coletado)
     this.shieldMesh = new THREE.Mesh(
       new THREE.IcosahedronGeometry(1.35, 1),
       new THREE.MeshStandardMaterial({
@@ -468,7 +388,6 @@ export class Game3D {
     this.dog.group.visible = false;
     this.scene.add(this.dog.group);
 
-    // partículas simples (poeira / brilho)
     const geo = new THREE.BufferGeometry();
     const count = 220;
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
@@ -489,7 +408,6 @@ export class Game3D {
     this.applyBiome(0);
   }
 
-  /** Troca a fase: céu, luz, cor das calçadas, neon e volumes laterais. */
   private applyBiome(idx: number) {
     this.biomeIdx = idx;
     const b = BIOMES[idx];
@@ -511,7 +429,6 @@ export class Game3D {
     this.renderer.setClearColor(new THREE.Color(b.fog));
   }
 
-  /** Portal que marca a entrada de uma fase nova. */
   private spawnGate() {
     const b = BIOMES[this.biomeIdx];
     const group = new THREE.Group();
@@ -529,7 +446,6 @@ export class Game3D {
     const top = new THREE.Mesh(new THREE.BoxGeometry(ROAD_W + 1.6, 0.9, 0.6), mat);
     top.position.set(0, 7.4, 0);
     group.add(top);
-    // faixa de pedestre gigante no chão
     for (let i = 0; i < 5; i++) {
       const stripe = new THREE.Mesh(
         new THREE.BoxGeometry(ROAD_W - 0.4, 0.06, 0.6),
@@ -552,15 +468,11 @@ export class Game3D {
     b.mesh.position.set(b.side * (ROAD_W / 2 + 3.4 + w / 2 + rand(0, 4)), h / 2, z);
   }
 
-  // -------------------------------------------------------------------------
-  // ciclo de vida
-  // -------------------------------------------------------------------------
   resize() {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
-    // em telas estreitas (celular) abre um pouco o campo de visão
     this.camera.fov = w / h < 0.75 ? 74 : 62;
     this.camera.updateProjectionMatrix();
   }
@@ -595,11 +507,10 @@ export class Game3D {
     this.caughtTimer = 0;
     this.copZ = 26;
     this.copTargetZ = 26;
-    this.copSurge = 0; // começa longe: policial e cachorro só aparecem quando há dano
+    this.copSurge = 0;
     this.nextSpawn = 46;
     this.dogZ = 28;
     this.barkTimer = 2.5;
-    // power-ups zerados
     this.powerTimers.clear();
     this.shield = false;
     this.chance = false;
@@ -608,7 +519,6 @@ export class Game3D {
     this.nextPower = this.powerRng.entre(SPAWN.powerIntervaloMinimo, SPAWN.powerIntervaloMaximo);
     this.heartCooldown = SPAWN.coracaoIntervaloMetros;
     this.specialSpawned = false;
-    // contagem regressiva antes de começar a valer
     this.countdown = 3.2;
     this.countdownStep = 4;
     this.clearEntities();
@@ -645,34 +555,28 @@ export class Game3D {
     this.renderer.dispose();
   }
 
-  /** Troca a skin da Luiza (tela de seleção de personagem). */
   setSkin(skin: SkinKey) {
     this.skin = skin;
     this.player.setPalette(findSkin(skin).body);
   }
 
-  /** Recorde pessoal atual, para avisar quando for batido no meio da corrida. */
   setBest(best: number) {
     this.best = best;
   }
 
-  /** Menos partículas e sem tremida de câmera (aparelho fraco / enjoo). */
   setReduceFx(on: boolean) {
     this.reduceFx = on;
   }
 
-  /** Liga/desliga a vibração do celular. */
   setVibration(on: boolean) {
     this.vibrate = on;
   }
 
-  /** Vibração curta no celular (ignorada em quem não tem o recurso). */
   private buzz(ms: number) {
     if (!this.vibrate) return;
     try {
       navigator.vibrate?.(ms);
     } catch {
-      /* aparelho sem vibração */
     }
   }
 
@@ -695,9 +599,6 @@ export class Game3D {
     this.items = [];
   }
 
-  // -------------------------------------------------------------------------
-  // input — respostas rápidas, sem travar em animação
-  // -------------------------------------------------------------------------
   input(action: InputAction) {
     if (this.phase !== "running") return;
     switch (action) {
@@ -711,7 +612,6 @@ export class Game3D {
         this.tryJump();
         break;
       case "slide":
-        // deslizar cancela o pulo (queda rápida) e recomeça o agachamento
         if (this.y > 0.1) this.vy = Math.min(this.vy, -16);
         if (this.sliding <= 0.1) this.audio.play("slide");
         this.sliding = SLIDE_TIME;
@@ -719,11 +619,6 @@ export class Game3D {
     }
   }
 
-  /**
-   * Troca de faixa. Se um carro/ônibus estiver passando naquela faixa a troca
-   * é recusada (igual aos trens do Subway Surfers): a Luiza continua na faixa
-   * e leva só um tranco na câmera.
-   */
   private tentarFaixa(alvo: number) {
     if (alvo < 0 || alvo > 2) return;
     if (this.faixaTravada(alvo)) {
@@ -735,7 +630,6 @@ export class Game3D {
     this.lane = alvo;
   }
 
-  /** true quando tem um trem (carro/ônibus) ocupando aquela faixa agora. */
   private faixaTravada(lane: number) {
     if (this.admin.noclip || this.admin.fly) return false;
     return this.obstacles.some((o) => o.trem && o.lane === lane && o.z > -TREM_LEN && o.z < 5.5);
@@ -745,7 +639,7 @@ export class Game3D {
     const canJump = this.groundedFor <= COYOTE;
     if (canJump) {
       this.vy = JUMP_V;
-      this.sliding = 0; // pular interrompe o agachamento na hora
+      this.sliding = 0;
       this.groundedFor = COYOTE + 1;
       this.jumpBuffer = 0;
       this.usedDoubleJump = false;
@@ -753,7 +647,6 @@ export class Game3D {
       this.burst(this.x, 0.15, 0, PALETTE.cyan, 8);
       return;
     }
-    // duplo pulo: só com o power-up ativo e uma vez por pulo
     if (this.powerTimers.has("pulo") && !this.usedDoubleJump) {
       this.usedDoubleJump = true;
       this.vy = JUMP_V * 0.92;
@@ -762,18 +655,14 @@ export class Game3D {
       this.burst(this.x, this.y + 0.4, 0, PALETTE.lime, 14);
       return;
     }
-    this.jumpBuffer = BUFFER; // guarda o comando para o instante do pouso
+    this.jumpBuffer = BUFFER;
   }
 
-  // -------------------------------------------------------------------------
-  // loop
-  // -------------------------------------------------------------------------
   private loop = (ts: number) => {
     this.raf = requestAnimationFrame(this.loop);
     const real = Math.min(0.05, (ts - this.lastTs) / 1000 || 0);
     this.lastTs = ts;
     if (real > 0) this.fps += (1 / real - this.fps) * 0.1;
-    // o admin pode rodar o jogo em câmera lenta ou acelerado
     const dt = real * this.admin.timeScale;
     this.t += dt;
 
@@ -811,7 +700,6 @@ export class Game3D {
       return;
     }
 
-    // contagem regressiva "3, 2, 1, Vai!" — a Luiza corre parada no lugar
     if (this.countdown > 0) {
       this.countdown -= dt;
       const passo = Math.ceil(this.countdown - 0.2);
@@ -830,7 +718,6 @@ export class Game3D {
       return;
     }
 
-    // velocidade
     const target = Math.min(SPEED_MAX, SPEED_START + this.distance * SPEED_RAMP);
     this.speed += (target - this.speed) * Math.min(1, dt * 1.2);
     const boosting = this.boost > 0;
@@ -838,8 +725,6 @@ export class Game3D {
     if (boosting) this.boost = Math.max(0, this.boost - dt * 1000);
     this.audio.setMusicRate(0.95 + (effSpeed / SPEED_MAX) * 0.28);
 
-    // power-ups com duração vão descontando; avisa quando acaba
-    // Map tolera delete/set da própria chave durante a iteração.
     for (const [key, ms] of this.powerTimers) {
       const restante = ms - dt * 1000;
       if (restante <= 0) {
@@ -857,10 +742,8 @@ export class Game3D {
     this.score +=
       travelled * (boosting ? 2 : 1) * (this.powerTimers.has("x2") ? 2 : 1) * this.multiplicador();
 
-    // faixa
     this.x += (LANES[this.lane] - this.x) * Math.min(1, dt * 13);
 
-    // modo fly da conta admin: sem gravidade e sem trilho de faixas
     if (this.admin.fly) {
       this.x += (this.flyX - this.x) * Math.min(1, dt * 7);
       this.vy *= 0.9;
@@ -880,56 +763,43 @@ export class Game3D {
       this.groundedFor = 0;
     }
 
-    // comando de pulo guardado (permite pular no instante do pouso)
     if (this.jumpBuffer > 0) {
       this.jumpBuffer -= dt;
       if (this.groundedFor <= COYOTE) this.tryJump();
     }
 
     if (this.sliding > 0) this.sliding -= dt;
-    // conta admin: invencibilidade fica sempre renovada
     if (this.admin.god || this.admin.invuln) this.invuln = Math.max(this.invuln, 0.5);
     if (this.invuln > 0) this.invuln -= dt;
     if (this.hitFlash > 0) this.hitFlash -= dt;
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.2);
 
-    // policial — com "Fuga Rápida" ele fica muito atrás e some da tela
     if (this.copSurge > 0) this.copSurge -= dt;
     const fugindo = this.powerTimers.has("fuga");
-    // Sem dano, o policial fica longe (atrás da câmera) e não aparece na tela.
-    // Ele só entra em cena quando a Luiza leva uma batida (copSurge > 0).
     this.copTargetZ = fugindo ? 30 : this.copSurge > 0 ? 3.1 : 26;
-    // durante a perseguição ele fecha a distância rápido; depois volta devagar
     this.copZ += (this.copTargetZ - this.copZ) * Math.min(1, dt * (this.copSurge > 0 ? 3.4 : 1.6));
     const copSide = this.x >= 0 ? -1 : 1;
     this.copX += (this.x + copSide * 1.5 - this.copX) * Math.min(1, dt * 2.2);
 
-    // troca de fase (bioma) por distância
     const wantBiome = Math.floor(this.distance / BIOME_LEN) % BIOMES.length;
     if (wantBiome !== this.biomeIdx) {
       this.applyBiome(wantBiome);
       this.spawnGate();
-      // sem aviso de troca de cenário: nada de nome do bioma nem lista de objetos na tela,
-      // a mudança é percebida só pelo cenário e pela música
       this.burst(this.x, 1.4, -4, PALETTE.gold, 24);
-      // música da área nova entra com crossfade de ~1,5 s
       this.audio.playTrack(wantBiome);
       this.audio.play("transicao");
       this.buzz(24);
     }
 
-    // cachorro correndo com o policial
     const dogSide = this.x >= 0 ? -1 : 1;
     this.dogZ += (this.copZ - 1.5 - this.dogZ) * Math.min(1, dt * 1.8);
     this.dogX += (this.x + dogSide * 2.2 - this.dogX) * Math.min(1, dt * 2.6);
     this.barkTimer -= dt;
     if (this.barkTimer <= 0) {
       this.barkTimer = this.copSurge > 0 ? rand(1.1, 2) : rand(3.5, 6.5);
-      // o latido só toca quando o cachorro está em cena (perseguição ativa)
       if (this.copSurge > 0) this.audio.play("bark");
     }
 
-    // ímã: puxa as moedas das outras faixas para a Luiza
     if (this.powerTimers.has("iman")) {
       for (const it of this.items) {
         if (it.taken || it.kind !== "coin") continue;
@@ -939,7 +809,6 @@ export class Game3D {
       }
     }
 
-    // novo recorde no meio da corrida
     if (!this.beatRecord && this.best > 0 && this.score > this.best) {
       this.beatRecord = true;
       this.onNotify("recorde", "Novo recorde pessoal!");
@@ -951,11 +820,8 @@ export class Game3D {
     this.scroll(travelled);
     this.spawn(travelled, effSpeed);
 
-    // Só depois dos obstáculos: escolhe uma faixa realmente livre na linha.
-    // Power-up universal: intervalos de 95–140 segundos de corrida.
     this.nextPower -= dt;
     if (this.nextPower <= 0) {
-      // Sem faixa livre agora: tenta de novo logo, em vez de perder o intervalo inteiro.
       this.nextPower = this.spawnPower()
         ? this.powerRng.entre(SPAWN.powerIntervaloMinimo, SPAWN.powerIntervaloMaximo)
         : SPAWN.powerNovaTentativa;
@@ -970,12 +836,10 @@ export class Game3D {
     }
   }
 
-  /** move o mundo para trás (em direção à câmera) */
   private scroll(d: number) {
     this.roadTex.offset.y -= d / 9;
 
     for (const o of this.obstacles) {
-      // carro e ônibus têm movimento próprio: vêm um pouco mais rápido
       o.z += o.trem ? d * 1.24 : d;
       o.group.position.z = o.z;
     }
@@ -998,7 +862,6 @@ export class Game3D {
     for (const p of this.props.filter((x) => x.z > DESPAWN_Z + 14)) this.recycle(p.group);
     this.props = this.props.filter((x) => x.z <= DESPAWN_Z + 14);
 
-    // novos props de cenário nas calçadas
     this.nextProp -= d;
     if (this.nextProp <= 0) {
       this.nextProp = rand(16, 30);
@@ -1010,12 +873,10 @@ export class Game3D {
       if (b.mesh.position.z > 40) this.placeBuilding(b, b.mesh.position.z - 26 * 16);
     }
 
-    // recicla o que passou
     const gone = this.obstacles.filter((o) => o.z > DESPAWN_Z);
     for (const o of gone) this.recycle(o.group);
     this.obstacles = this.obstacles.filter((o) => o.z <= DESPAWN_Z);
 
-    // itens coletados ainda ficam alguns quadros "saltando" para a HUD
     for (const it of this.items.filter((i) => i.z > DESPAWN_Z || (i.taken && i.fly <= 0))) {
       this.scene.remove(it.obj);
       disposeItem(it.obj);
@@ -1023,9 +884,6 @@ export class Game3D {
     this.items = this.items.filter((i) => i.z <= DESPAWN_Z && (!i.taken || i.fly > 0));
   }
 
-  // -------------------------------------------------------------------------
-  // spawner — garante que sempre dá para desviar
-  // -------------------------------------------------------------------------
   private spawn(travelled: number, effSpeed: number) {
     this.nextSpawn -= travelled;
     if (this.nextSpawn > 0) return;
@@ -1053,17 +911,11 @@ export class Game3D {
     this.nextSpawn = linha.distanciaProxima;
   }
 
-  /**
-   * Regras de cada obstáculo: até onde ele "bate", se lança a Luiza para cima
-   * (rampa/escada) e se ele é um trem (vem na faixa e tranca a troca).
-   */
   private metaDoObstaculo(type: ObstacleType): { topo: number; rampa: boolean; trem: boolean } {
     if (type === "ride") return { topo: 1.15, rampa: true, trem: false };
     if (type === "block") {
       const modelo = modeloDoObstaculo(type, this.biomeIdx);
-      // ônibus: dá para passar por cima com o duplo pulo ou saindo de uma rampa
       if (modelo === "onibus") return { topo: ONIBUS_TOP, rampa: false, trem: true };
-      // carro: não dá para pular, e enquanto ele está do lado a faixa fica travada
       if (modelo === "carro") return { topo: Infinity, rampa: false, trem: true };
       return { topo: Infinity, rampa: false, trem: false };
     }
@@ -1078,12 +930,10 @@ export class Game3D {
     this.obstacles.push({ type, lane, z, group, hit: false, ...meta });
   }
 
-  /** Coloca um prop na calçada, alternando os lados. */
   private spawnProp() {
     const group = construirProp(this.biomeIdx);
     const side = Math.random() < 0.5 ? -1 : 1;
     if (group.userData.alinhado) {
-      // sem sorteio de posição: encostado na calçada e virado para a pista
       group.position.set(side * (ROAD_W / 2 + 2.6), 0, SPAWN_Z);
       group.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
     } else {
@@ -1097,8 +947,6 @@ export class Game3D {
   private recycle(group: THREE.Object3D) {
     this.scene.remove(group);
     group.traverse((child) => {
-      // malhas de modelo .glb são compartilhadas entre todos os obstáculos:
-      // apagar aqui deixaria os próximos invisíveis
       if (child.userData.compartilhado) return;
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
@@ -1111,18 +959,15 @@ export class Game3D {
   }
 
   private addItem(kind: ItemKind, lane: number, z: number, y: number) {
-    // a moeda leva a gravação temática da área atual
     const obj = makeItemMesh(kind, this.biomeIdx);
     obj.position.set(LANES[lane], y, z);
     this.scene.add(obj);
     this.items.push({ kind, lane, z, y, obj, taken: false, fly: 0, x: LANES[lane] });
   }
 
-  /** Solta uma cápsula de power-up numa faixa livre. */
   private spawnPower(): boolean {
     const ocupadas = this.obstacles.filter((o) => o.z < SPAWN_Z + SPAWN.powerJanelaLivre).map((o) => o.lane);
     const livres = [0, 1, 2].filter((l) => !ocupadas.includes(l));
-    // Não sacrifica a acessibilidade do item quando todas as faixas estão ocupadas.
     if (!livres.length) return false;
     const lane = this.powerRng.escolher(livres);
     const power = sortearPower(this.powerRng.proximo, this.ultimoPower);
@@ -1144,7 +989,6 @@ export class Game3D {
     return true;
   }
 
-  /** Aplica o efeito do power-up coletado. */
   private aplicarPower(kind: PowerKind) {
     const info = POWERS[kind];
     this.audio.play("powerativar");
@@ -1175,9 +1019,6 @@ export class Game3D {
     this.pushHud();
   }
 
-  // -------------------------------------------------------------------------
-  // colisões
-  // -------------------------------------------------------------------------
   private collisions() {
     const headTop = (this.sliding > 0 && this.y < 0.2 ? SLIDE_H : PLAYER_H) + this.y;
     const feet = this.y;
@@ -1188,9 +1029,6 @@ export class Game3D {
       if (Math.abs(o.z) > 1.05) continue;
       if (Math.abs(LANES[o.lane] - laneNow) > COLISAO.faixaTolerancia) continue;
 
-      // rampa e escada rolante funcionam como plataforma: em vez de bater,
-      // a Luiza sobe nelas e é lançada ~2 blocos para cima (dá para passar por
-      // cima de um ônibus).
       if (o.rampa) {
         o.hit = true;
         this.vy = RAMP_LAUNCH;
@@ -1208,13 +1046,11 @@ export class Game3D {
 
       if (collides) {
         o.hit = true;
-        // o boost de velocidade NÃO dá mais invencibilidade
         const atravessa =
           this.invuln > 0 || this.admin.noclip || this.admin.god || this.powerTimers.has("fantasma");
         if (atravessa) {
           this.burst(this.x, 1, 0, PALETTE.lime, 14);
         } else if (this.shield) {
-          // escudo estala e some, mas a Luiza não perde vida
           this.shield = false;
           this.shieldMesh.visible = false;
           this.invuln = 1;
@@ -1236,13 +1072,12 @@ export class Game3D {
       const dy = Math.abs(it.y - (this.y + (this.sliding > 0 ? 0.5 : 1)));
       if (dy > COLISAO.itemAlturaTolerancia) continue;
       it.taken = true;
-      it.fly = 0.42; // salta em direção à HUD antes de desaparecer
+      it.fly = 0.42;
       this.collect(it);
     }
   }
 
   private collect(it: Item) {
-    // cápsula de power-up: não entra no combo, aplica o efeito na hora
     if (it.kind === "power" && it.power) {
       this.audio.play("powercoletar");
       this.burst(it.x, it.y, it.z, POWERS[it.power].cor, 22);
@@ -1250,7 +1085,6 @@ export class Game3D {
       return;
     }
 
-    // cada coleta segura aumenta o combo (o multiplicador zera na batida)
     this.comboHits += 1;
     this.comboTimer = COMBO_WINDOW;
     const nextCombo = Math.min(COMBO_MAX, 1 + Math.floor(this.comboHits / 6));
@@ -1315,7 +1149,6 @@ export class Game3D {
     this.pushHud();
 
     if (this.lives <= 0) {
-      // Segunda Chance: se estiver guardada, ela volta a correr na hora
       if (this.chance) {
         this.chance = false;
         this.lives = 1;
@@ -1337,18 +1170,11 @@ export class Game3D {
       return;
     }
     this.float(`-1 VIDA (${this.lives})`, PALETTE.pink);
-    this.chamarPolicial(4); // policial e cachorro entram em cena por alguns segundos
+    this.chamarPolicial(4);
   }
 
-  /**
-   * Chama o policial e o cachorro para a cena.
-   *
-   * Fora desses segundos eles ficam escondidos atrás da câmera: durante a
-   * corrida normal (sem dano) a Luiza corre sozinha, como o usuário pediu.
-   */
   private chamarPolicial(segundos: number) {
     this.copSurge = segundos;
-    // se estiverem muito longe, aparecem já perto da borda da tela e correm
     if (this.copZ > 6) {
       this.copZ = 5.6;
       this.dogZ = 6.4;
@@ -1388,9 +1214,6 @@ export class Game3D {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // partículas + visual
-  // -------------------------------------------------------------------------
   private burst(x: number, y: number, z: number, color: string, n: number) {
     const c = new THREE.Color(color);
     let placed = 0;
@@ -1415,7 +1238,6 @@ export class Game3D {
   private updateVisuals(dt: number) {
     const running = this.phase === "running" || this.phase === "caught";
 
-    // ---- Luiza: boneco 3D com pose procedural ---------------------------
     let pose: CharPose = "run";
     if (this.hitFlash > 0) pose = "hit";
     else if (this.y > 0.15) pose = "jump";
@@ -1425,12 +1247,9 @@ export class Game3D {
     this.player.animate(this.t, pose, speedFactor);
     this.player.setOpacity(this.invuln > 0 && Math.floor(this.t * 12) % 2 === 0 ? 0.45 : 1);
     this.player.group.position.set(this.x, this.y, 0);
-    // Math.PI = de frente para o fundo da pista (a câmera vê as costas dela).
-    // Sem isso a Luiza corria de costas, virada para a câmera.
     this.player.group.rotation.y = Math.PI + (LANES[this.lane] - this.x) * 0.25;
     this.player.group.visible = this.phase !== "over";
 
-    // ---- policial: só aparece quando está perseguindo (depois de um dano) --
     const near = this.copSurge > 0;
     const perseguindo = running && (near || this.phase === "caught");
     this.cop.animate(this.t * 1.05, "run", speedFactor * 1.05);
@@ -1438,20 +1257,17 @@ export class Game3D {
     this.cop.group.rotation.y = Math.PI;
     this.cop.group.visible = perseguindo;
 
-    // ---- cachorro: entra e sai junto com o policial ----------------------
     this.dog.group.visible = perseguindo;
     if (perseguindo) {
       this.dog.group.position.set(this.dogX, 0, this.dogZ);
       this.dog.animate(this.t, this.barkTimer < 0.4);
     }
 
-    // giroflex do policial (apagado quando ele não está em cena)
     const sirenOn = perseguindo;
     this.sirenL.intensity = sirenOn ? 14 + Math.sin(this.t * 22) * 8 : 0;
     this.sirenL.color.set(Math.floor(this.t * 6) % 2 === 0 ? PALETTE.pink : PALETTE.cyan);
     this.sirenL.position.set(this.copX, 2.6, this.copZ - 0.4);
 
-    // free cam do admin: a câmera fica onde ele deixou
     if (this.admin.freeCam) {
       this.camera.position.copy(this.freeCamPos);
       this.camera.lookAt(this.freeCamPos.x, 1.2, this.freeCamPos.z - 16);
@@ -1459,7 +1275,6 @@ export class Game3D {
       return;
     }
 
-    // câmera: segue de leve a faixa, sobe com a velocidade, treme na batida
     const camTargetX = this.x * 0.42;
     const shake = this.reduceFx ? 0 : this.shake * 0.28;
     this.camera.position.x += (camTargetX - this.camera.position.x) * Math.min(1, dt * 6);
@@ -1467,7 +1282,6 @@ export class Game3D {
     this.camera.position.z = 8.6 + (this.boost > 0 ? 0.8 : 0) + (this.shake > 0 ? rand(-shake, shake) : 0);
     this.camera.lookAt(this.x * 0.5, 1.8 + this.y * 0.25, -12);
 
-    // partículas
     const pos = this.particles.geometry.getAttribute("position") as THREE.BufferAttribute;
     this.particleData.forEach((p, i) => {
       if (p.life > 0) {
@@ -1483,7 +1297,6 @@ export class Game3D {
     });
     pos.needsUpdate = true;
 
-    // ---- bolha do escudo -------------------------------------------------
     this.shieldMesh.visible = this.shield && running;
     if (this.shieldMesh.visible) {
       this.shieldMesh.position.set(this.x, this.y + 1, 0);
@@ -1492,22 +1305,18 @@ export class Game3D {
       this.shieldMesh.scale.setScalar(pulso);
     }
 
-    // ---- Modo Fantasma: personagem translúcida ---------------------------
     if (this.powerTimers.has("fantasma")) {
       this.player.setOpacity(0.42 + Math.sin(this.t * 6) * 0.08);
     }
 
-    // ---- rastro do boost de velocidade -----------------------------------
     if (this.boost > 0 && !this.reduceFx && Math.floor(this.t * 30) % 2 === 0) {
       this.burst(this.x, 0.6 + this.y, 0.8, PALETTE.orange, 3);
     }
 
-    // ---- aura pulsante do ímã --------------------------------------------
     if (this.powerTimers.has("iman") && !this.reduceFx && Math.floor(this.t * 12) % 3 === 0) {
       this.burst(this.x, 1 + this.y, 0, PALETTE.cyan, 2);
     }
 
-    // itens: flutuam e giram devagar; os coletados saltam para a HUD
     for (const it of this.items) {
       if (it.taken) {
         it.fly = Math.max(0, it.fly - dt);
@@ -1524,17 +1333,11 @@ export class Game3D {
     this.desenharHitbox(dt);
   }
 
-  // -------------------------------------------------------------------------
-  // conta admin — nada aqui liga sozinho numa conta normal
-  // -------------------------------------------------------------------------
-
-  /** Multiplicador de moedas/pontos (god mode usa 10 se nada foi escolhido). */
   private multiplicador() {
     if (this.admin.multiplier > 1) return this.admin.multiplier;
     return this.admin.god ? 10 : 1;
   }
 
-  /** Liga/desliga os poderes da conta admin. */
   setAdmin(flags: Partial<AdminFlags>) {
     this.admin = { ...this.admin, ...flags };
     if (this.admin.fly) this.flyX = this.x;
@@ -1542,7 +1345,6 @@ export class Game3D {
     if (!this.admin.hitbox) this.limparHitbox();
   }
 
-  /** Números do overlay de debug (FPS, coordenadas, contagem de objetos). */
   getDebug(): DebugInfo {
     return {
       seed: this.seed,
@@ -1558,19 +1360,16 @@ export class Game3D {
     };
   }
 
-  /** Enche o cofrinho da partida (moedas ilimitadas). */
   adminMoedas(quanto = 100_000) {
     this.coins += quanto;
     this.float(`+${quanto.toLocaleString("pt-BR")}`, PALETTE.gold);
     this.pushHud();
   }
 
-  /** Força o spawn de um obstáculo do tipo escolhido, na faixa da Luiza. */
   adminSpawnObstaculo(type: SpawnKey) {
     this.addObstacle(type, this.lane, SPAWN_Z + 40);
   }
 
-  /** Força o spawn de um power-up específico (ou sorteado). */
   adminSpawnPower(kind?: PowerKind) {
     if (!kind) {
       this.spawnPower();
@@ -1592,7 +1391,6 @@ export class Game3D {
     });
   }
 
-  /** Limpa a pista (remove obstáculos e itens da tela). */
   adminLimparPista() {
     for (const o of this.obstacles) this.recycle(o.group);
     this.obstacles = [];
@@ -1603,7 +1401,6 @@ export class Game3D {
     this.items = [];
   }
 
-  /** Pula direto para o começo de um bioma, sem percorrer a distância. */
   adminIrParaBioma(idx: number) {
     const alvo = ((idx % BIOMES.length) + BIOMES.length) % BIOMES.length;
     this.distance = alvo * BIOME_LEN + 4;
@@ -1614,7 +1411,6 @@ export class Game3D {
     this.pushHud();
   }
 
-  /** Teleporte rápido: joga a Luiza para uma faixa e altura. */
   adminTeleporte(lane: number, altura = 0) {
     this.lane = Math.max(0, Math.min(2, lane));
     this.x = LANES[this.lane];
@@ -1623,7 +1419,6 @@ export class Game3D {
     this.vy = 0;
   }
 
-  /** Move a free cam / o personagem em modo fly. */
   adminMover(eixo: "x" | "y" | "z", passo: number) {
     if (this.admin.freeCam) {
       this.freeCamPos[eixo] += passo;
@@ -1636,7 +1431,6 @@ export class Game3D {
   }
 
   private limparHitbox() {
-    // Remove de trás para frente: o array muda a cada remove().
     for (let i = this.hitboxGroup.children.length - 1; i >= 0; i--) {
       const child = this.hitboxGroup.children[i];
       this.hitboxGroup.remove(child);
@@ -1644,10 +1438,6 @@ export class Game3D {
     }
   }
 
-  /**
-   * Desenha as caixas de colisão dos obstáculos (ferramenta de teste do
-   * admin). Refaz a lista 10x por segundo para não pesar.
-   */
   private desenharHitbox(dt: number) {
     if (!this.admin.hitbox) return;
     this.hitboxTimer -= dt;

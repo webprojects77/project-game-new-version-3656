@@ -1,16 +1,3 @@
-/**
- * Base para as peças low poly desenhadas pela autora do jogo.
- *
- * Cada peça é montada UMA vez com primitivas (caixa, cilindro, cone...) e
- * todas as partes da mesma "camada" viram uma malha só, com a cor gravada no
- * vértice. Resultado: uma peça cheia de detalhe custa 1–3 draw calls.
- *
- * Camadas:
- *  - cor: recebe luz da cena, sombreamento facetado (flat), igual aos desenhos;
- *  - brilho: ignora a luz (lâmpadas, luzes do semáforo, janelas acesas);
- *  - tinta: como "cor", mas o material é de cada cópia — serve para trocar a
- *    cor do corpo (variantes do prédio) sem duplicar a geometria.
- */
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
@@ -44,16 +31,13 @@ const tmpE = new THREE.Euler();
 const tmpP = new THREE.Vector3();
 const tmpS = new THREE.Vector3();
 
-/** Junta primitivas coloridas e devolve um Group leve. */
 export class Molde {
   private partes: Record<Camada, THREE.BufferGeometry[]> = { cor: [], brilho: [], tinta: [] };
   private extras: THREE.Object3D[] = [];
 
-  /** adiciona uma geometria qualquer (ela é consumida) */
   add(geo: THREE.BufferGeometry, cor: string, p: Pose = {}) {
     const g = geo.index ? geo.toNonIndexed() : geo;
     if (g !== geo) geo.dispose();
-    // só posição e cor: a luz facetada vem do flatShading
     for (const nome of Object.keys(g.attributes)) if (nome !== "position") g.deleteAttribute(nome);
     tmpCor.set(cor);
     const n = g.attributes.position.count;
@@ -95,7 +79,6 @@ export class Molde {
     return this.add(new THREE.TorusGeometry(r, tubo, segTubo, segAnel, arco), cor, p);
   }
 
-  /** tubo entre dois pontos (fios, barras, corrimãos) */
   barra(a: [number, number, number], b: [number, number, number], r: number, cor: string, seg = 6, camada?: Camada) {
     const va = new THREE.Vector3(...a);
     const vb = new THREE.Vector3(...b);
@@ -108,7 +91,6 @@ export class Molde {
     return this.add(geo, cor, { camada });
   }
 
-  /** fio caído entre dois pontos, com barriga */
   fio(a: [number, number, number], b: [number, number, number], barriga: number, r: number, cor: string, passos = 6) {
     let ant = a;
     for (let i = 1; i <= passos; i++) {
@@ -124,7 +106,6 @@ export class Molde {
     return this;
   }
 
-  /** objeto pronto (ex.: plano com textura de canvas) que entra como está */
   extra(obj: THREE.Object3D) {
     this.extras.push(obj);
     return this;
@@ -149,7 +130,6 @@ export class Molde {
   }
 }
 
-/** Plano com textura (letreiros, grafite, revistas). Material reaproveitado por chave. */
 const matsTextura = new Map<string, THREE.MeshStandardMaterial>();
 export function placa(
   chave: string,
@@ -181,7 +161,6 @@ export function placa(
   return mesh;
 }
 
-/** Canvas 2D → textura sRGB. */
 export function texturaCanvas(w: number, h: number, desenhar: (ctx: CanvasRenderingContext2D) => void) {
   const c = document.createElement("canvas");
   c.width = w;
@@ -193,7 +172,6 @@ export function texturaCanvas(w: number, h: number, desenhar: (ctx: CanvasRender
   return tex;
 }
 
-/** Textura de arquivo em /public (ex.: o grafite do muro desenhado pela autora). */
 const loaderTextura = new THREE.TextureLoader();
 export function texturaArquivo(url: string) {
   const tex = loaderTextura.load(url);
@@ -202,7 +180,6 @@ export function texturaArquivo(url: string) {
   return tex;
 }
 
-/** Retângulo arredondado no canvas. */
 export function retangulo(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);

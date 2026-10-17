@@ -4,12 +4,6 @@ import { fileURLToPath } from "node:url";
 import { createManagedDeepLinks } from "@runablehq/managed-auth/desktop/main";
 import { registerIpcHandlers } from "./ipc";
 
-// Fully editable Electron main process — own the window, lifecycle, menus, tray,
-// and IPC (starter handlers in ./ipc.ts). One platform call is enforced by
-// `bun run lint`: createManagedDeepLinks. It registers the app's
-// runable-<APPLICATION_ID> deep-link protocol, forwards deep links to the
-// renderer, and backs managed sign-in (skills/app/references/desktop.md).
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -57,8 +51,6 @@ app.on("activate", () => {
   }
 });
 
-// Windows/Linux deliver deep links as argv — of a second instance while the app
-// is running, of this instance on cold start. Keep one instance and forward both.
 if (app.requestSingleInstanceLock()) {
   app.on("second-instance", (_event, argv) => deepLinks.handleArgv(argv));
   app.whenReady().then(() => {

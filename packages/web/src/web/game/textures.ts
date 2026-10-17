@@ -1,12 +1,5 @@
-/**
- * Texturas procedurais do mundo 3D (céu, pista e fachadas dos prédios).
- *
- * Tudo é desenhado em canvas na hora e virado em textura do three.js — o jogo
- * não depende de nenhum arquivo de imagem.
- */
 import * as THREE from "three";
 
-/** Textura procedural da pista (asfalto + faixas), pensada para rolar em V. */
 export function makeRoadTexture(): THREE.Texture {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -15,21 +8,18 @@ export function makeRoadTexture(): THREE.Texture {
   ctx.fillStyle = "#2B1B4A";
   ctx.fillRect(0, 0, 512, 512);
 
-  // ruído sutil
   for (let i = 0; i < 2600; i++) {
     ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.035})`;
     const s = 1 + Math.random() * 2.5;
     ctx.fillRect(Math.random() * 512, Math.random() * 512, s, s);
   }
 
-  // divisórias das 3 faixas (tracejado)
   ctx.fillStyle = "rgba(255,255,255,0.55)";
   for (const x of [512 / 3, (512 / 3) * 2]) {
     for (let y = 0; y < 512; y += 128) {
       ctx.fillRect(x - 4, y, 8, 74);
     }
   }
-  // bordas neon
   ctx.fillStyle = "#22E1FF";
   ctx.fillRect(0, 0, 10, 512);
   ctx.fillRect(502, 0, 10, 512);
@@ -41,10 +31,6 @@ export function makeRoadTexture(): THREE.Texture {
   return tex;
 }
 
-/**
- * Céu em gradiente usado como background da cena.
- * Cada bioma passa suas 5 cores (topo → horizonte) para marcar a hora do dia.
- */
 export function makeSkyTexture(
   stops: [string, string, string, string, string] = ["#170B2B", "#4B1B63", "#B3277A", "#FF6B3D", "#FFD23F"],
 ): THREE.Texture {
@@ -66,7 +52,6 @@ export function makeSkyTexture(
   return tex;
 }
 
-/** Fachada de prédio (janelas acesas) para o cenário lateral. */
 export function makeBuildingTexture(hue: number): THREE.Texture {
   const canvas = document.createElement("canvas");
   canvas.width = 128;

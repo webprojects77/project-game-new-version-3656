@@ -9,7 +9,6 @@ export const COLISAO = {
   itemAlturaTolerancia: 1.5,
 } as const;
 
-/** Rampa é tratada como plataforma pelo motor antes desta checagem. */
 export function bateNoObstaculo(type: ObstacleType, pes: number, cabeca: number, topo: number): boolean {
   if (type === "low") return pes < COLISAO.baixoAlturaPes;
   if (type === "high") return cabeca > COLISAO.altoLimiteCabeca;
